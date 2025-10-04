@@ -1,0 +1,10 @@
+# FastAPI Dashboard Requirements
+# FastAPI web framework with WebSocket support
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# HTTP client for bot communication
+aiohttp==3.9.1
+
+# Additional dependencies for real-time features
+websockets==12.0

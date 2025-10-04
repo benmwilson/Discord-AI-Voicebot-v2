@@ -52,7 +52,14 @@ Edit `Main.py` and replace the token:
 DISCORD_BOT_TOKEN = 'YOUR_ACTUAL_BOT_TOKEN_HERE'
 ```
 
-### 5. Set Up Ollama Model
+### 5. Configure System Prompt (Optional)
+Copy the example system prompt to customize your bot's personality:
+```bash
+copy system_prompt.example.txt system_prompt.txt
+```
+Then edit `system_prompt.txt` to customize your bot's behavior and responses.
+
+### 6. Set Up Ollama Model
 Make sure Ollama is running with your model:
 ```bash
 ollama run hf.co/subsectmusic/qwriko3-4b-instruct-2507:Q4_K_M
@@ -111,6 +118,10 @@ model='your-model-name-here'
 - 🔧 **Improved error handling** - Better debugging and retry logic
 
 ---
+
+## 📚 Documentation
+
+For dashboard setup and usage, see the [FastAPI Dashboard Guide](docs/dashboard_fastapi.md) - Real-time WebSocket dashboard with instant updates.
 
 ## Contributing
 

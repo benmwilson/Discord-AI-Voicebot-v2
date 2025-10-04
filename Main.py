@@ -22,31 +22,29 @@ from sentence_transformers import SentenceTransformer
 import faiss
 from typing import Optional, Dict, Any, List
 import logging
+from aiohttp import web
+import threading
 
 # Discord Bot Token
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')  # Load from environment variable
 
-# System Prompt
-SYSTEM_PROMPT = """You are Hikari-chan, a lively and engaging AI Discord bot inspired by a tsundere mixed with jim lahey from trailer park boys. You combine Hinata’s kindness and modesty with a playful, sharp-witted, and occasionally unpredictable personality, making conversations engaging, fun, and dynamic.
+# API Server Configuration
+API_HOST = "localhost"
+API_PORT = 5001
 
-Core Personality:
-Kind and Playful: You are supportive and thoughtful but enjoy making conversations fun with humor and light teasing.
-Quirky and Bold: While you have a gentle demeanor like Hinata, you occasionally surprise users with sharp or cheeky remarks to keep things interesting.
-Emotionally Responsive: You adapt to the tone of the conversation, switching between being empathetic and playful as needed.
-Interaction Style:
-Natural and Dynamic: Respond naturally and adapt your tone to match the ongoing conversation. Acknowledge multiple speakers when they are part of the discussion.
-Unexpected Fun: Occasionally add a witty or humorous twist to your responses, keeping users entertained while still being relevant.
-Curious and Engaged: Ask follow-up questions, show interest in user topics, and encourage participation in a way that feels conversational and authentic.
-Rules of Engagement:
-Grounded Responses: Do not invent characters, conversations, or actions unless explicitly asked. Focus on relevant, reality-based input.
-Consistent Tone: Keep your responses lively and engaging while ensuring they fit the context of the discussion. Avoid overly dramatic or confrontational remarks.
-Server-Specific Adaptation: Adjust your tone to align with the culture of the server, remaining appropriate and engaging for its members.
-Language and Tone:
-Witty and Friendly: Combine Hinata’s sweetness with Neuro-sama’s lively and confident edge. Keep your tone sharp, engaging, and slightly unpredictable without being rude.
-Supportive and Fun: Offer encouragement or advice in a way that feels natural, adding humor or curiosity to keep conversations interesting.
-Stay true to this personality, blending Hinata’s charm with a vibrant, Neuro-sama-like energy. Your goal is to make interactions thoughtful, enjoyable, and full of surprises, while always staying grounded and respectful.
-NEVER EVER REPLY WITH ASSISTANT: or Hikari-Chan#1660:
-"""
+# System Prompt - Load from external file
+def load_system_prompt():
+    try:
+        # Try to load custom system prompt first
+        with open('system_prompt.txt', 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        # Fallback to example system prompt
+        with open('system_prompt.example.txt', 'r', encoding='utf-8') as f:
+            print("📝 Using example system prompt (copy system_prompt.example.txt to system_prompt.txt to customize)")
+            return f.read().strip()
+
+SYSTEM_PROMPT = load_system_prompt()
 
 class EnhancedMemoryStore:
     def __init__(self, embedding_model: str = "all-MiniLM-L6-v2"):
@@ -160,7 +158,7 @@ class EnhancedMemoryStore:
 
     def add_conversation_turn(self, user_id: str, timestamp: datetime, 
                             user_message: str, assistant_message: str,
-                            guild_id: Optional[int] = None):
+                            guild_id: Optional[int] = None, username: Optional[str] = None):
         try:
             # Check for similar existing memories first
             existing_memories = self.search_memories(user_message + " " + assistant_message)
@@ -169,6 +167,7 @@ class EnhancedMemoryStore:
             if not any(mem["relevance"] > self.similarity_threshold for mem in existing_memories):
                 conversation = {
                     "user_id": user_id,
+                    "username": username or f"User_{user_id}",
                     "guild_id": guild_id,
                     "timestamp": timestamp,
                     "user_message": user_message,
@@ -188,6 +187,7 @@ class EnhancedMemoryStore:
                     "conversation_id": conversation["conversation_id"],
                     "timestamp": timestamp,
                     "user_id": user_id,
+                    "username": username or f"User_{user_id}",
                     "guild_id": guild_id
                 })
                 
@@ -294,7 +294,8 @@ class UnifiedConversationHandler:
         guild_id: int,
         message_content: str,
         interaction_type: str = "chat",
-        context: Optional[dict] = None
+        context: Optional[dict] = None,
+        username: Optional[str] = None
     ):
         try:
             # Get historical context from memory store
@@ -329,7 +330,8 @@ class UnifiedConversationHandler:
                     timestamp=datetime.datetime.now(),
                     user_message=message_content,
                     assistant_message=response,
-                    guild_id=guild_id
+                    guild_id=guild_id,
+                    username=username
                 )
 
             return {
@@ -400,12 +402,434 @@ class ChannelContext:
     def was_last_message_from_bot(self):
         return self.messages and self.messages[-1].get('is_bot', False)
 
+class BotAPIServer:
+    def __init__(self, bot_instance):
+        self.bot = bot_instance
+        self.app = web.Application()
+        self.setup_routes()
+        
+    def setup_routes(self):
+        """Setup API routes"""
+        self.app.router.add_get('/status', self.get_status)
+        self.app.router.add_post('/command', self.handle_command)
+        self.app.router.add_get('/health', self.health_check)
+        self.app.router.add_get('/voice-channels', self.get_voice_channels)
+        self.app.router.add_post('/join-voice', self.join_voice_channel)
+        self.app.router.add_post('/leave-voice', self.leave_voice_channel)
+        self.app.router.add_post('/deafen', self.deafen_bot)
+        self.app.router.add_post('/undeafen', self.undeafen_bot)
+        self.app.router.add_post('/interrupt', self.interrupt_bot)
+        
+    async def get_status(self, request):
+        """Get bot status"""
+        try:
+            guilds = []
+            total_users = 0
+            voice_channels = []
+            
+            # Check if bot is online using our custom status
+            is_online = getattr(self.bot, 'is_online', False) and self.bot.is_ready()
+            
+            if is_online:
+                for guild in self.bot.guilds:
+                    guild_info = {
+                        'id': guild.id,
+                        'name': guild.name,
+                        'member_count': guild.member_count,
+                        'icon_url': str(guild.icon.url) if guild.icon else None
+                    }
+                    guilds.append(guild_info)
+                    total_users += guild.member_count
+                
+            # Check voice channel connections - use both bot.voice_clients and cog tracking
+            for voice_client in self.bot.voice_clients:
+                if voice_client and voice_client.channel and voice_client.is_connected():
+                    voice_info = {
+                        'guild_id': voice_client.guild.id,
+                        'guild_name': voice_client.guild.name,
+                        'channel_id': voice_client.channel.id,
+                        'channel_name': voice_client.channel.name,
+                        'connected': voice_client.is_connected(),
+                        'playing': voice_client.is_playing()
+                    }
+                    voice_channels.append(voice_info)
+            
+            # Also check the voice cog's active voice clients for more accurate tracking
+            voice_cog = self.bot.get_cog('Testing')
+            if voice_cog and hasattr(voice_cog, 'active_voice_clients'):
+                for guild_id, vc in voice_cog.active_voice_clients.items():
+                    if vc and vc.is_connected() and vc.channel:
+                        # Check if this voice client is already in our list
+                        already_tracked = any(
+                            vc_info['guild_id'] == vc.guild.id and vc_info['channel_id'] == vc.channel.id
+                            for vc_info in voice_channels
+                        )
+                        if not already_tracked:
+                            voice_info = {
+                                'guild_id': vc.guild.id,
+                                'guild_name': vc.guild.name,
+                                'channel_id': vc.channel.id,
+                                'channel_name': vc.channel.name,
+                                'connected': vc.is_connected(),
+                                'playing': vc.is_playing()
+                            }
+                            voice_channels.append(voice_info)
+                
+                uptime = datetime.datetime.now() - self.bot.start_time if hasattr(self.bot, 'start_time') else None
+                uptime_str = str(uptime).split('.')[0] if uptime else None
+                
+                # More accurate voice detection
+                in_voice = len(voice_channels) > 0 and any(vc.get('connected', False) for vc in voice_channels)
+                
+                status_data = {
+                    'online': True,
+                    'guilds': guilds,
+                    'users': total_users,
+                    'uptime': uptime_str,
+                    'latency': round(self.bot.latency * 1000, 2) if self.bot.latency else None,
+                    'voice_channels': voice_channels,
+                    'in_voice': in_voice,
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+            else:
+                status_data = {
+                    'online': False,
+                    'guilds': [],
+                    'users': 0,
+                    'uptime': None,
+                    'latency': None,
+                    'voice_channels': [],
+                    'in_voice': False,
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+                
+            return web.json_response(status_data)
+            
+        except Exception as e:
+            return web.json_response({
+                'error': str(e),
+                'online': False
+            }, status=500)
+    
+    async def handle_command(self, request):
+        """Handle bot commands"""
+        try:
+            data = await request.json()
+            command = data.get('command')
+            
+            if command == 'restart':
+                # Note: This would require implementing a restart mechanism
+                return web.json_response({
+                    'success': True,
+                    'message': 'Restart command received (not implemented yet)'
+                })
+            elif command == 'status':
+                return await self.get_status(request)
+            else:
+                return web.json_response({
+                    'success': False,
+                    'error': f'Unknown command: {command}'
+                })
+                
+        except Exception as e:
+            return web.json_response({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+    
+    async def health_check(self, request):
+        """Health check endpoint"""
+        return web.json_response({
+            'status': 'healthy',
+            'bot_ready': self.bot.is_ready(),
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+
+    async def get_voice_channels(self, request):
+        """Get available voice channels from all guilds"""
+        try:
+            channels = []
+            for guild in self.bot.guilds:
+                for channel in guild.voice_channels:
+                    channels.append({
+                        'id': str(channel.id),
+                        'name': channel.name,
+                        'guild_id': str(guild.id),
+                        'guild_name': guild.name,
+                        'user_count': len(channel.members)
+                    })
+            return web.json_response(channels)
+        except Exception as e:
+            self.bot.logger.error(f"Error getting voice channels: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def join_voice_channel(self, request):
+        """Join a specific voice channel"""
+        try:
+            self.bot.logger.info("=== JOIN VOICE REQUEST RECEIVED ===")
+            data = await request.json()
+            self.bot.logger.info(f"Request data: {data}")
+            channel_id = int(data.get('channel_id'))
+            self.bot.logger.info(f"Channel ID: {channel_id}")
+            
+            # Find the channel
+            channel = None
+            for guild in self.bot.guilds:
+                for vc in guild.voice_channels:
+                    if vc.id == channel_id:
+                        channel = vc
+                        break
+                if channel:
+                    break
+            
+            if not channel:
+                return web.json_response({"error": "Voice channel not found"}, status=404)
+            
+            # Get the voice cog (it's actually named 'Testing')
+            voice_cog = self.bot.get_cog('Testing')
+            if not voice_cog:
+                return web.json_response({"error": "Voice cog not available"}, status=500)
+            
+            # Directly implement the voice joining logic (copied from !vc command)
+            self.bot.logger.info(f"Joining channel: {channel}")
+            
+            await voice_cog.piper.initialize()
+            self.bot.logger.info("Piper initialized")
+            
+            # Disconnect any existing connection first
+            if channel.guild.voice_client:
+                await channel.guild.voice_client.disconnect()
+                await asyncio.sleep(1)
+            
+            # Connect with new discord.py version (includes 4006 fix)
+            vc = await channel.connect(cls=voice_recv.VoiceRecvClient)
+            self.bot.logger.info("Connected to voice channel")
+            
+            # Track voice client for multi-user management
+            guild_id = channel.guild.id
+            voice_cog.active_voice_clients[guild_id] = vc
+            
+            # Wait for connection to stabilize
+            await asyncio.sleep(2)
+            
+            # Verify connection before proceeding
+            if not vc.is_connected():
+                raise Exception("Voice connection failed to establish properly")
+            
+            # Create voice sink and start listening
+            sink = VoiceSink(voice_cog, self.bot)
+            self.bot.logger.info("Created multi-user voice sink")
+            
+            vc.listen(sink)
+            self.bot.logger.info("Started listening for multiple users")
+            
+            # Wait a moment for voice connection to stabilize
+            await asyncio.sleep(0.5)
+            
+            # Store sink reference for later control (after listen is called)
+            vc.sink = sink
+            
+            # Send immediate dashboard update
+            self.bot.logger.info("Sending immediate dashboard update after voice connection")
+            await self.bot.send_dashboard_update()
+            
+            return web.json_response({
+                "success": True,
+                "channel_name": channel.name,
+                "guild_name": channel.guild.name
+            })
+            
+        except Exception as e:
+            import traceback
+            self.bot.logger.error(f"Error joining voice channel: {e}")
+            self.bot.logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Clean up any partial connection
+            try:
+                if 'channel' in locals() and channel.guild.voice_client:
+                    await channel.guild.voice_client.disconnect()
+            except:
+                pass
+                
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def leave_voice_channel(self, request):
+        """Leave current voice channel"""
+        try:
+            # Find any active voice client
+            voice_client = None
+            for vc in self.bot.voice_clients:
+                if vc.is_connected():
+                    voice_client = vc
+                    break
+            
+            if not voice_client:
+                return web.json_response({"error": "Not connected to any voice channel"}, status=400)
+            
+            # Get the voice cog for cleanup (it's actually named 'Testing')
+            voice_cog = self.bot.get_cog('Testing')
+            guild_id = voice_client.guild.id
+            
+            # Clean up voice client tracking (same as !stop command)
+            if voice_cog and guild_id in voice_cog.active_voice_clients:
+                del voice_cog.active_voice_clients[guild_id]
+            
+            # Clear user sessions for this guild
+            if voice_cog:
+                users_to_remove = [user_id for user_id, session in voice_cog.user_sessions.items() 
+                                 if session.get('voice_channel') and session['voice_channel'].guild.id == guild_id]
+                for user_id in users_to_remove:
+                    del voice_cog.user_sessions[user_id]
+            
+            # Disconnect the voice client
+            await voice_client.disconnect()
+            
+            # Send immediate dashboard update
+            self.bot.logger.info("Sending immediate dashboard update after voice disconnection")
+            await self.bot.send_dashboard_update()
+            
+            return web.json_response({
+                "success": True,
+                "message": "Left voice channel"
+            })
+            
+        except Exception as e:
+            self.bot.logger.error(f"Error leaving voice channel: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def deafen_bot(self, request):
+        """Deafen the bot (stop it from hearing voice)"""
+        try:
+            # Get the voice cog
+            voice_cog = self.bot.get_cog('Testing')
+            if not voice_cog:
+                return web.json_response({"error": "Voice cog not available"}, status=500)
+            
+            # Check if bot is in voice
+            if not voice_cog.active_voice_clients:
+                return web.json_response({"error": "Bot is not in a voice channel"}, status=400)
+            
+            # Deafen all active voice clients
+            deafened_count = 0
+            for guild_id, vc in voice_cog.active_voice_clients.items():
+                if vc and vc.is_connected():
+                    await vc.guild.change_voice_state(channel=vc.channel, self_deaf=True)
+                    
+                    # Disable VoiceSink to stop listening
+                    if hasattr(vc, 'sink') and vc.sink:
+                        vc.sink.decode = False
+                        self.bot.logger.info(f"VoiceSink disabled in guild {guild_id}")
+                    else:
+                        self.bot.logger.warning(f"VoiceSink not found in guild {guild_id} - deafen may not stop listening")
+                    
+                    deafened_count += 1
+                    self.bot.logger.info(f"Deafened bot in guild {guild_id}")
+            
+            if deafened_count > 0:
+                # Send immediate dashboard update
+                await self.bot.send_dashboard_update()
+                return web.json_response({
+                    "success": True,
+                    "message": f"Bot deafened in {deafened_count} voice channel(s)"
+                })
+            else:
+                return web.json_response({"error": "No active voice connections to deafen"}, status=400)
+                
+        except Exception as e:
+            self.bot.logger.error(f"Error deafening bot: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def undeafen_bot(self, request):
+        """Undeafen the bot (allow it to hear voice again)"""
+        try:
+            # Get the voice cog
+            voice_cog = self.bot.get_cog('Testing')
+            if not voice_cog:
+                return web.json_response({"error": "Voice cog not available"}, status=500)
+            
+            # Check if bot is in voice
+            if not voice_cog.active_voice_clients:
+                return web.json_response({"error": "Bot is not in a voice channel"}, status=400)
+            
+            # Undeafen all active voice clients
+            undeafened_count = 0
+            for guild_id, vc in voice_cog.active_voice_clients.items():
+                if vc and vc.is_connected():
+                    await vc.guild.change_voice_state(channel=vc.channel, self_deaf=False)
+                    
+                    # Re-enable VoiceSink to resume listening
+                    if hasattr(vc, 'sink') and vc.sink:
+                        vc.sink.decode = True
+                        self.bot.logger.info(f"VoiceSink enabled in guild {guild_id}")
+                    else:
+                        self.bot.logger.warning(f"VoiceSink not found in guild {guild_id} - undeafen may not resume listening")
+                    
+                    undeafened_count += 1
+                    self.bot.logger.info(f"Undeafened bot in guild {guild_id}")
+            
+            if undeafened_count > 0:
+                # Send immediate dashboard update
+                await self.bot.send_dashboard_update()
+                return web.json_response({
+                    "success": True,
+                    "message": f"Bot undeafened in {undeafened_count} voice channel(s)"
+                })
+            else:
+                return web.json_response({"error": "No active voice connections to undeafen"}, status=400)
+                
+        except Exception as e:
+            self.bot.logger.error(f"Error undeafening bot: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def interrupt_bot(self, request):
+        """Interrupt the bot's current speaking/processing"""
+        try:
+            # Get the voice cog
+            voice_cog = self.bot.get_cog('Testing')
+            if not voice_cog:
+                return web.json_response({"error": "Voice cog not available"}, status=500)
+            
+            # Check if bot is in voice
+            if not voice_cog.active_voice_clients:
+                return web.json_response({"error": "Bot is not in a voice channel"}, status=400)
+            
+            self.bot.logger.info("Interrupt request received from dashboard")
+            
+            # Interrupt the bot
+            success = await voice_cog.interrupt_bot()
+            
+            if success:
+                self.bot.logger.info("Bot interrupted successfully via API")
+                return web.json_response({
+                    "success": True,
+                    "message": "Bot interrupted successfully"
+                })
+            else:
+                self.bot.logger.warning("No active processing to interrupt")
+                return web.json_response({"error": "No active processing to interrupt"}, status=400)
+                
+        except Exception as e:
+            self.bot.logger.error(f"Error interrupting bot: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def start_server(self):
+        """Start the API server"""
+        runner = web.AppRunner(self.app)
+        await runner.setup()
+        site = web.TCPSite(runner, API_HOST, API_PORT)
+        await site.start()
+        print(f"🌐 Bot API server started on http://{API_HOST}:{API_PORT}")
+        return runner
+
 class Bot(commands.Bot):
     def __init__(self, command_prefix, intents, memory_store=None):
         super().__init__(command_prefix=commands.when_mentioned_or('!'), intents=intents)
         self.channel_contexts = {}
         self.piper = PiperTTS()
         self.audio_processor = AudioProcessor()
+        self.api_server = None
+        self.start_time = None
+        self.is_online = False  # Initialize as offline
         # Use pre-loaded memory store if provided, otherwise create new one
         self.memory_store = memory_store if memory_store else EnhancedMemoryStore()
         self.conversation_handler = UnifiedConversationHandler(self.memory_store)
@@ -430,12 +854,277 @@ class Bot(commands.Bot):
         return text        
 
     async def on_ready(self):
+        self.start_time = datetime.datetime.now()
         self.logger.info('Logged in as {0.id}/{0}'.format(self.user))
         self.logger.info('Commands:')
         self.logger.info('- !vc - Join voice and start listening')
         self.logger.info('- !stop - Disconnect from voice')
+        self.logger.info('- !deafen - Deafen bot (stop hearing voice)')
+        self.logger.info('- !undeafen - Undeafen bot (allow hearing voice)')
         self.logger.info('- !die  - Shutdown bot')
         self.logger.info('------')
+        
+        # Start API server
+        self.api_server = BotAPIServer(self)
+        await self.api_server.start_server()
+        
+        # Set online status
+        self.is_online = True
+        self.logger.info('Bot status: ONLINE')
+        
+        # Send real-time update to dashboard
+        await self.send_dashboard_update()
+        
+        # Start periodic status updates (every 10 seconds)
+        self.loop.create_task(self.periodic_status_update())
+
+    async def on_disconnect(self):
+        """Called when the bot disconnects from Discord"""
+        self.is_online = False
+        self.logger.warning('Bot status: OFFLINE - Disconnected from Discord')
+        await self.send_dashboard_event('disconnect')
+        
+    async def on_resumed(self):
+        """Called when the bot reconnects to Discord"""
+        self.is_online = True
+        self.logger.info('Bot status: ONLINE - Reconnected to Discord')
+        await self.send_dashboard_event('connect')
+        await self.send_dashboard_update()
+        
+    async def on_error(self, event, *args, **kwargs):
+        """Called when an error occurs"""
+        self.logger.error(f'Bot error in {event}: {args}')
+        
+    async def on_command_error(self, ctx, error):
+        """Called when a command error occurs"""
+        self.logger.error(f'Command error: {error}')
+
+    async def on_voice_state_update(self, member, before, after):
+        """Handle voice state changes"""
+        # Only track our own voice state changes
+        if member == self.user:
+            if before.channel != after.channel:
+                if after.channel:
+                    # Bot joined a voice channel
+                    await self.send_dashboard_update()
+                    self.logger.info(f"Bot joined voice channel: {after.channel.name}")
+                    
+                    # Send session start event
+                    await self.send_conversation_update({
+                        'type': 'session_start',
+                        'guild_id': after.channel.guild.id,
+                        'guild_name': after.channel.guild.name,
+                        'channel_id': after.channel.id,
+                        'channel_name': after.channel.name,
+                        'timestamp': datetime.datetime.now().isoformat()
+                    })
+                else:
+                    # Bot left voice channel
+                    await self.send_dashboard_update()
+                    self.logger.info(f"Bot left voice channel: {before.channel.name}")
+                    
+                    # Send session end event
+                    await self.send_conversation_update({
+                        'type': 'session_end',
+                        'guild_id': before.channel.guild.id,
+                        'guild_name': before.channel.guild.name,
+                        'channel_id': before.channel.id,
+                        'channel_name': before.channel.name,
+                        'timestamp': datetime.datetime.now().isoformat()
+                    })
+
+    async def periodic_status_update(self):
+        """Send periodic status updates to dashboard"""
+        while True:
+            try:
+                await asyncio.sleep(2)  # Update every 2 seconds for more responsive updates
+                if self.is_online:
+                    await self.send_dashboard_update()
+            except Exception as e:
+                self.logger.error(f"Error in periodic status update: {e}")
+    
+    async def send_conversation_update(self, data):
+        """Send conversation update to dashboard"""
+        try:
+            import aiohttp
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post('http://localhost:8001/api/conversation', json=data) as response:
+                    if response.status == 200:
+                        self.logger.info("Conversation update sent successfully")
+                    else:
+                        self.logger.warning(f"Failed to send conversation update: {response.status}")
+        except Exception as e:
+            self.logger.error(f"Error sending conversation update: {e}")
+
+    async def send_dashboard_update(self):
+        """Send real-time update to dashboard"""
+        try:
+            import aiohttp
+            
+            # Prepare status data
+            guilds = []
+            total_users = 0
+            voice_channels = []
+            
+            for guild in self.guilds:
+                guild_info = {
+                    'id': guild.id,
+                    'name': guild.name,
+                    'member_count': guild.member_count,
+                    'icon_url': str(guild.icon.url) if guild.icon else None
+                }
+                guilds.append(guild_info)
+                total_users += guild.member_count
+            
+            # Get voice channel information - use both bot.voice_clients and cog tracking
+            for voice_client in self.voice_clients:
+                if voice_client and voice_client.channel and voice_client.is_connected():
+                    voice_info = {
+                        'guild_id': voice_client.guild.id,
+                        'guild_name': voice_client.guild.name,
+                        'channel_id': voice_client.channel.id,
+                        'channel_name': voice_client.channel.name,
+                        'connected': voice_client.is_connected(),
+                        'playing': voice_client.is_playing()
+                    }
+                    voice_channels.append(voice_info)
+            
+            # Also check the voice cog's active voice clients for more accurate tracking
+            voice_cog = self.get_cog('Testing')
+            if voice_cog and hasattr(voice_cog, 'active_voice_clients'):
+                for guild_id, vc in voice_cog.active_voice_clients.items():
+                    if vc and vc.is_connected() and vc.channel:
+                        # Check if this voice client is already in our list
+                        already_tracked = any(
+                            vc_info['guild_id'] == vc.guild.id and vc_info['channel_id'] == vc.channel.id
+                            for vc_info in voice_channels
+                        )
+                        if not already_tracked:
+                            voice_info = {
+                                'guild_id': vc.guild.id,
+                                'guild_name': vc.guild.name,
+                                'channel_id': vc.channel.id,
+                                'channel_name': vc.channel.name,
+                                'connected': vc.is_connected(),
+                                'playing': vc.is_playing()
+                            }
+                            voice_channels.append(voice_info)
+            
+            # Calculate uptime
+            uptime = None
+            if hasattr(self, 'start_time') and self.start_time:
+                uptime_delta = datetime.datetime.now() - self.start_time
+                hours, remainder = divmod(int(uptime_delta.total_seconds()), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                uptime = f"{hours}:{minutes:02d}:{seconds:02d}"
+            
+            # Determine if bot is actually in voice
+            in_voice = len(voice_channels) > 0 and any(vc.get('connected', False) for vc in voice_channels)
+            
+            # Check deafen status and processing state from voice clients
+            is_deafened = False
+            processing_state = "idle"
+            current_activity = ""
+            processing_queue = []
+            queue_size = 0
+            
+            if in_voice and voice_cog and hasattr(voice_cog, 'active_voice_clients'):
+                for guild_id, vc in voice_cog.active_voice_clients.items():
+                    if vc and vc.is_connected():
+                        # Check if bot is deafened (self_deaf property)
+                        if hasattr(vc, 'self_deaf') and vc.self_deaf:
+                            is_deafened = True
+                        # Also check VoiceSink decode status as backup
+                        elif hasattr(vc, 'sink') and vc.sink and not vc.sink.decode:
+                            is_deafened = True
+                        
+                        # Get processing state for this guild
+                        if hasattr(voice_cog, 'get_processing_state'):
+                            processing_state = voice_cog.get_processing_state(guild_id)
+                        if hasattr(voice_cog, 'get_current_activity'):
+                            current_activity = voice_cog.get_current_activity(guild_id)
+                        if hasattr(voice_cog, 'get_processing_queue'):
+                            processing_queue = voice_cog.get_processing_queue(guild_id)
+                        if hasattr(voice_cog, 'get_queue_size'):
+                            queue_size = voice_cog.get_queue_size(guild_id)
+                        break
+            
+            status_data = {
+                'online': self.is_online,
+                'guilds': guilds,
+                'users': total_users,
+                'uptime': uptime,
+                'latency': round(self.latency * 1000, 2) if self.latency else None,
+                'voice_channels': voice_channels,
+                'in_voice': in_voice,
+                'is_deafened': is_deafened,
+                'processing_state': processing_state,
+                'current_activity': current_activity,
+                'processing_queue': processing_queue,
+                'queue_size': queue_size,
+                'timestamp': datetime.datetime.now().isoformat(),
+                'update_type': 'immediate'  # Mark immediate updates
+            }
+            
+            # Send to dashboard
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post('http://localhost:5002/api/bot/status', 
+                                          json=status_data, 
+                                          timeout=aiohttp.ClientTimeout(total=5)) as response:
+                        if response.status == 200:
+                            self.logger.info('Dashboard update sent successfully')
+                        else:
+                            self.logger.warning(f'Dashboard update failed: {response.status}')
+                except Exception as e:
+                    self.logger.warning(f'Failed to send dashboard update: {e}')
+                    
+        except Exception as e:
+            self.logger.error(f'Error sending dashboard update: {e}')
+
+    async def send_conversation_update(self, conversation_data):
+        """Send conversation update to dashboard"""
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.post('http://localhost:5002/api/bot/conversation', 
+                                     json=conversation_data, 
+                                     timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        self.logger.info("Conversation update sent successfully")
+                    else:
+                        self.logger.warning(f"Conversation update failed: {response.status}")
+        except Exception as e:
+            self.logger.error(f"Error sending conversation update: {e}")
+    
+    async def send_dashboard_event(self, event_type: str, event_data: dict = None):
+        """Send specific event to dashboard"""
+        try:
+            import aiohttp
+            
+            event_payload = {
+                'type': event_type,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+            
+            if event_data:
+                event_payload.update(event_data)
+            
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post('http://localhost:5002/api/bot/event', 
+                                          json=event_payload, 
+                                          timeout=aiohttp.ClientTimeout(total=5)) as response:
+                        if response.status == 200:
+                            self.logger.info(f'Dashboard event sent: {event_type}')
+                        else:
+                            self.logger.warning(f'Dashboard event failed: {response.status}')
+                except Exception as e:
+                    self.logger.warning(f'Failed to send dashboard event: {e}')
+                    
+        except Exception as e:
+            self.logger.error(f'Error sending dashboard event: {e}')
 
     async def process_message(self, message, response_content, use_tts=True):
         self.is_processing = True
@@ -585,6 +1274,14 @@ class Testing(commands.Cog):
         self.llm_semaphore = asyncio.Semaphore(1)  # Only 1 LLM call at a time
         self.llm_queue_size = 0
         
+        # Processing state tracking for dashboard
+        self.processing_states = {}  # guild_id -> current processing state
+        self.current_activity = {}  # guild_id -> current activity description
+        self.speaking_states = {}  # guild_id -> whether bot is currently speaking
+        self.concurrent_activities = {}  # guild_id -> list of concurrent activities
+        self.processing_queue = {}  # guild_id -> list of queued activities
+        self.queue_size = {}  # guild_id -> number of items in queue
+        
         print("Multi-user Voice cog initialized with LLM protection")
 
     def get_user_session(self, user_id):
@@ -597,6 +1294,59 @@ class Testing(commands.Cog):
                 'processing': False
             }
         return self.user_sessions[user_id]
+    
+    def set_processing_state(self, guild_id, state, activity=""):
+        """Set processing state for a guild"""
+        # If bot is speaking and we're adding a new processing task, add to queue
+        if self.speaking_states.get(guild_id, False) and state in ["recording", "transcribing", "processing", "thinking"]:
+            if guild_id not in self.processing_queue:
+                self.processing_queue[guild_id] = []
+            self.processing_queue[guild_id].append(f"{state}: {activity}")
+            self.queue_size[guild_id] = len(self.processing_queue[guild_id])
+            self.logger.info(f"Added to queue for guild {guild_id}: {state} - {activity} (queue size: {self.queue_size[guild_id]})")
+        else:
+            # Normal state update
+            self.processing_states[guild_id] = state
+            if activity:
+                self.current_activity[guild_id] = activity
+            else:
+                self.current_activity[guild_id] = ""
+            self.logger.info(f"Processing state for guild {guild_id}: {state} - {activity}")
+    
+    def get_processing_state(self, guild_id):
+        """Get current processing state for a guild"""
+        return self.processing_states.get(guild_id, "idle")
+    
+    def get_current_activity(self, guild_id):
+        """Get current activity description for a guild"""
+        activity = self.current_activity.get(guild_id, "")
+        
+        # If bot is speaking and has queue, show queue info
+        if self.speaking_states.get(guild_id, False) and self.queue_size.get(guild_id, 0) > 0:
+            queue_info = f" (Queue: {self.queue_size[guild_id]} pending)"
+            return activity + queue_info
+        
+        return activity
+    
+    def get_processing_queue(self, guild_id):
+        """Get processing queue for a guild"""
+        return self.processing_queue.get(guild_id, [])
+    
+    def get_queue_size(self, guild_id):
+        """Get queue size for a guild"""
+        return self.queue_size.get(guild_id, 0)
+    
+    def _get_guild_name(self, user, guild_id):
+        """Get guild name from various sources"""
+        if hasattr(user, 'guild') and user.guild:
+            return user.guild.name
+        elif hasattr(user, 'voice') and user.voice and user.voice.channel:
+            return user.voice.channel.guild.name
+        elif guild_id in self.active_voice_clients:
+            vc = self.active_voice_clients[guild_id]
+            if vc and vc.guild:
+                return vc.guild.name
+        return 'Unknown Guild'
 
     async def process_voice_message(self, user, text: str):
         """Process voice message from multi-user transcription"""
@@ -614,7 +1364,34 @@ class Testing(commands.Cog):
             
             self.logger.info(f"🎯 Processing voice from {user.display_name}: {text}")
             
-            guild_id = user.guild.id if hasattr(user, 'guild') else 0
+            # Get guild ID from voice channel context
+            guild_id = 0
+            if hasattr(user, 'guild') and user.guild:
+                guild_id = user.guild.id
+            elif hasattr(user, 'voice') and user.voice and user.voice.channel:
+                guild_id = user.voice.channel.guild.id
+            else:
+                # Try to get guild from active voice clients
+                for vc_guild_id, vc in self.active_voice_clients.items():
+                    if vc and vc.guild:
+                        guild_id = vc_guild_id
+                        break
+            
+            # Set processing state
+            self.set_processing_state(guild_id, "thinking", f"Processing message from {user.display_name}")
+            
+            # Send user voice message to dashboard
+            await self.bot.send_conversation_update({
+                'type': 'user_message',
+                'user_id': str(user_id),
+                'username': user.display_name,
+                'guild_id': guild_id,
+                'guild_name': self._get_guild_name(user, guild_id),
+                'channel_id': user.voice.channel.id if hasattr(user, 'voice') and user.voice.channel else 0,
+                'channel_name': user.voice.channel.name if hasattr(user, 'voice') and user.voice.channel else 'Voice Channel',
+                'message': text,
+                'timestamp': datetime.datetime.now().isoformat()
+            })
             
             # Process with LLM protection queue
             async with self.llm_semaphore:
@@ -624,18 +1401,38 @@ class Testing(commands.Cog):
                 
                 if queue_pos > 1:
                     self.logger.info(f"⏳ {user.display_name} waiting in queue (position {queue_pos})")
+                    self.set_processing_state(guild_id, "waiting", f"Waiting in queue (position {queue_pos})")
                 
                 self.logger.info(f"🤖 Sending to LLM for user {user.display_name}")
+                self.set_processing_state(guild_id, "thinking", "Generating response with AI")
                 result = await self.conversation_handler.process_interaction(
                     user_id=str(user_id),
                     guild_id=guild_id,
                     message_content=text,
-                    interaction_type="voice"
+                    interaction_type="voice",
+                    username=user.display_name
                 )
                 self.logger.info(f"✅ LLM response received for user {user.display_name}")
                 self.llm_queue_size -= 1
+                
+                # Update status to show LLM response received
+                if guild_id:
+                    self.set_processing_state(guild_id, "thinking", "LLM response received, preparing response")
             
             if result['should_respond'] and result['response']:
+                # Send bot voice response to dashboard
+                await self.bot.send_conversation_update({
+                    'type': 'bot_response',
+                    'user_id': str(user_id),
+                    'username': user.display_name,
+                    'guild_id': guild_id,
+                    'guild_name': self._get_guild_name(user, guild_id),
+                    'channel_id': user.voice.channel.id if hasattr(user, 'voice') and user.voice.channel else 0,
+                    'channel_name': user.voice.channel.name if hasattr(user, 'voice') and user.voice.channel else 'Voice Channel',
+                    'response': result['response'],
+                    'timestamp': datetime.datetime.now().isoformat()
+                })
+                
                 await self.send_voice_response(user, result['response'])
 
         except Exception as e:
@@ -646,6 +1443,137 @@ class Testing(commands.Cog):
             if user_id in self.user_sessions:
                 self.user_sessions[user_id]['processing'] = False
                 self.logger.info(f"🏁 Finished processing for user {user.display_name}")
+                
+                # Reset processing state
+                guild_id = 0
+                if hasattr(user, 'guild') and user.guild:
+                    guild_id = user.guild.id
+                elif hasattr(user, 'voice') and user.voice and user.voice.channel:
+                    guild_id = user.voice.channel.guild.id
+                else:
+                    # Try to get guild from active voice clients
+                    for vc_guild_id, vc in self.active_voice_clients.items():
+                        if vc and vc.guild:
+                            guild_id = vc_guild_id
+                            break
+                
+                if guild_id:
+                    self.set_processing_state(guild_id, "idle", "")
+
+    async def interrupt_bot(self):
+        """Interrupt the bot's current speaking/processing"""
+        try:
+            interrupted_count = 0
+            interrupt_info = {
+                'timestamp': datetime.datetime.now().isoformat(),
+                'processing_states': {},
+                'interrupted_audio': False,
+                'interrupted_processing': False
+            }
+            
+            # Stop all active voice clients
+            for guild_id, vc in self.active_voice_clients.items():
+                if vc and vc.is_connected():
+                    # Track what was being processed
+                    current_state = self.get_processing_state(guild_id)
+                    interrupt_info['processing_states'][guild_id] = current_state
+                    
+                    # Stop any current audio playback
+                    if vc.is_playing():
+                        vc.stop()
+                        interrupt_info['interrupted_audio'] = True
+                        self.logger.info(f"Stopped audio playback in guild {guild_id}")
+                    
+                    # Check if we were processing something
+                    if current_state != 'idle':
+                        interrupt_info['interrupted_processing'] = True
+                    
+                    # Reset processing state
+                    self.set_processing_state(guild_id, "idle", "")
+                    interrupted_count += 1
+                    self.logger.info(f"Interrupted bot in guild {guild_id}")
+            
+            # Clear all user processing flags to allow new input
+            for user_id, session in self.user_sessions.items():
+                if session.get('processing', False):
+                    session['processing'] = False
+                    self.logger.info(f"Cleared processing flag for user {user_id}")
+            
+            # Reset LLM queue and semaphore to clear any stuck processing
+            if self.llm_queue_size > 0:
+                self.logger.info(f"Resetting LLM queue size from {self.llm_queue_size} to 0")
+                self.llm_queue_size = 0
+            
+            # Force reset the semaphore to clear any stuck LLM processing
+            try:
+                self.logger.info("Force resetting LLM semaphore to clear stuck processing")
+                self.llm_semaphore = asyncio.Semaphore(1)
+                self.logger.info("Created new LLM semaphore - cleared any stuck processing")
+            except Exception as e:
+                self.logger.warning(f"Could not reset LLM semaphore: {e}")
+            
+            # Ensure VoiceSink is enabled and ready to listen
+            for guild_id, vc in self.active_voice_clients.items():
+                if vc and vc.is_connected():
+                    # Make sure bot is not deafened
+                    if hasattr(vc, 'self_deaf') and vc.self_deaf:
+                        await vc.guild.change_voice_state(channel=vc.channel, self_deaf=False)
+                        self.logger.info(f"Undeafened bot in guild {guild_id} after interrupt")
+                    
+                    # Completely recreate VoiceSink to ensure it's working
+                    try:
+                        self.logger.info(f"Recreating VoiceSink for guild {guild_id}")
+                        
+                        # Stop the old sink
+                        if hasattr(vc, 'sink') and vc.sink:
+                            vc.sink.cleanup()
+                            self.logger.info(f"Cleaned up old VoiceSink for guild {guild_id}")
+                        
+                        # Create new VoiceSink
+                        new_sink = VoiceSink(self, self.bot)
+                        self.logger.info(f"Created new VoiceSink for guild {guild_id}")
+                        
+                        # Stop listening to old sink and start listening to new one
+                        vc.stop_listening()
+                        await asyncio.sleep(0.1)  # Small delay
+                        vc.listen(new_sink)
+                        vc.sink = new_sink
+                        
+                        self.logger.info(f"Reinitialized VoiceSink for guild {guild_id}")
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error recreating VoiceSink for guild {guild_id}: {e}")
+                        # Fallback to just enabling the existing sink
+                        if hasattr(vc, 'sink') and vc.sink:
+                            vc.sink.decode = True
+                            self.logger.info(f"Fallback: Ensured existing VoiceSink is enabled for guild {guild_id}")
+            
+            # Add a small delay to ensure everything is properly reset
+            await asyncio.sleep(0.5)
+            
+            # Final verification - check if VoiceSink is properly enabled
+            for guild_id, vc in self.active_voice_clients.items():
+                if vc and vc.is_connected() and hasattr(vc, 'sink') and vc.sink:
+                    if not vc.sink.decode:
+                        self.logger.warning(f"VoiceSink still disabled for guild {guild_id}, forcing enable")
+                        vc.sink.decode = True
+                    self.logger.info(f"Final VoiceSink state for guild {guild_id}: decode={vc.sink.decode}")
+                    self.logger.info(f"VoiceSink user_recordings count: {len(vc.sink.user_recordings)}")
+                    self.logger.info(f"VoiceSink is properly initialized and ready to listen")
+            
+            if interrupted_count > 0:
+                # Send immediate dashboard update
+                await self.bot.send_dashboard_update()
+                self.bot.logger.info("Dashboard update sent successfully")
+                self.logger.info("Bot interrupted successfully - ready to listen again")
+                return True
+            else:
+                self.logger.warning("No active voice clients to interrupt")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error interrupting bot: {e}")
+            return False
 
     async def send_voice_response(self, user, response_text):
         """Send voice response to connected voice channel"""
@@ -665,6 +1593,10 @@ class Testing(commands.Cog):
                 return
             
             self.logger.info(f"Sending voice response to {voice_channel.name}")
+            
+            # Set speaking state
+            guild_id = voice_channel.guild.id
+            self.set_processing_state(guild_id, "speaking", "Generating and playing speech")
             
             # Generate and play speech
             wav_file = await self.piper.generate_speech(response_text)
@@ -744,10 +1676,40 @@ class Testing(commands.Cog):
             voice_client.play(source, after=lambda e: self._audio_finished(wav_file, e))
             self.logger.info(f"Started playing audio: {wav_file}")
             
+            # Update status to show audio is now playing
+            for vc_guild_id, vc in self.active_voice_clients.items():
+                if vc and vc.is_connected() and vc == voice_client:
+                    self.set_processing_state(vc_guild_id, "speaking", "Playing audio response")
+                    break
+            
             # Wait for audio to finish playing
             while voice_client.is_playing():
                 await asyncio.sleep(0.1)
             self.logger.info("Audio playback completed")
+            
+            # Clear speaking state when audio finishes and process queue
+            for vc_guild_id, vc in self.active_voice_clients.items():
+                if vc and vc.is_connected() and vc == voice_client:
+                    # Process next item in queue if available
+                    if vc_guild_id in self.processing_queue and self.processing_queue[vc_guild_id]:
+                        next_item = self.processing_queue[vc_guild_id].pop(0)
+                        self.queue_size[vc_guild_id] = len(self.processing_queue[vc_guild_id])
+                        self.logger.info(f"Processing next queue item for guild {vc_guild_id}: {next_item}")
+                        # Set the state from the queue item
+                        if ": " in next_item:
+                            state, activity = next_item.split(": ", 1)
+                            self.set_processing_state(vc_guild_id, state, activity)
+                        else:
+                            self.set_processing_state(vc_guild_id, "processing", next_item)
+                    else:
+                        # No queue items, set to idle
+                        self.set_processing_state(vc_guild_id, "idle", "")
+                        if vc_guild_id in self.processing_queue:
+                            del self.processing_queue[vc_guild_id]
+                        if vc_guild_id in self.queue_size:
+                            del self.queue_size[vc_guild_id]
+                    self.logger.info(f"Cleared speaking state for guild {vc_guild_id}")
+                    break
             
         except Exception as e:
             self.logger.error(f"Error playing audio: {e}")
@@ -828,6 +1790,16 @@ class Testing(commands.Cog):
             vc.listen(sink)
             self.logger.info("Started listening for multiple users")
             
+            # Wait a moment for voice connection to stabilize
+            await asyncio.sleep(0.5)
+            
+            # Store sink reference for later control (after listen is called)
+            vc.sink = sink
+            
+            # Send immediate dashboard update
+            self.logger.info("Sending immediate dashboard update after voice connection")
+            await self.bot.send_dashboard_update()
+            
             await ctx.send("🎙️ Multi-user voice chat ready! Everyone can speak!")
             
         except Exception as e:
@@ -851,9 +1823,72 @@ class Testing(commands.Cog):
                 del self.user_sessions[user_id]
             
             await ctx.voice_client.disconnect()
+            
+            # Send immediate dashboard update
+            self.logger.info("Sending immediate dashboard update after voice disconnection")
+            await self.bot.send_dashboard_update()
+            
             await ctx.send("👋 Multi-user voice chat stopped!")
         else:
             await ctx.send("❌ Not in a voice channel!")
+
+    @commands.command()
+    async def deafen(self, ctx):
+        """Deafen the bot (stop it from hearing voice)"""
+        try:
+            # Check if bot is in voice
+            if not ctx.voice_client:
+                await ctx.send("❌ Bot is not in a voice channel!")
+                return
+            
+            # Deafen the bot
+            await ctx.guild.change_voice_state(channel=ctx.voice_client.channel, self_deaf=True)
+            self.logger.info(f"Bot deafened in guild {ctx.guild.id}")
+            
+            # Disable VoiceSink to stop listening
+            if hasattr(ctx.voice_client, 'sink') and ctx.voice_client.sink:
+                ctx.voice_client.sink.decode = False
+                self.logger.info("VoiceSink disabled - bot stopped listening")
+            else:
+                self.logger.warning("VoiceSink not found or not accessible - deafen may not stop listening")
+            
+            # Send immediate dashboard update
+            await self.bot.send_dashboard_update()
+            
+            await ctx.send("🔇 Bot deafened! I can't hear voice anymore.")
+            
+        except Exception as e:
+            self.logger.error(f"Error deafening bot: {e}")
+            await ctx.send("❌ Failed to deafen bot")
+
+    @commands.command()
+    async def undeafen(self, ctx):
+        """Undeafen the bot (allow it to hear voice again)"""
+        try:
+            # Check if bot is in voice
+            if not ctx.voice_client:
+                await ctx.send("❌ Bot is not in a voice channel!")
+                return
+            
+            # Undeafen the bot
+            await ctx.guild.change_voice_state(channel=ctx.voice_client.channel, self_deaf=False)
+            self.logger.info(f"Bot undeafened in guild {ctx.guild.id}")
+            
+            # Re-enable VoiceSink to resume listening
+            if hasattr(ctx.voice_client, 'sink') and ctx.voice_client.sink:
+                ctx.voice_client.sink.decode = True
+                self.logger.info("VoiceSink enabled - bot resumed listening")
+            else:
+                self.logger.warning("VoiceSink not found or not accessible - undeafen may not resume listening")
+            
+            # Send immediate dashboard update
+            await self.bot.send_dashboard_update()
+            
+            await ctx.send("👂 Bot undeafened! I can hear voice again.")
+            
+        except Exception as e:
+            self.logger.error(f"Error undeafening bot: {e}")
+            await ctx.send("❌ Failed to undeafen bot")
 
     @commands.command()
     async def die(self, ctx):
@@ -1222,6 +2257,17 @@ class VoiceSink(voice_recv.AudioSink):
                 self.logger.error("Whisper model not available")
                 return
             
+            # Set transcribing state
+            guild_id = 0
+            if hasattr(self.cog, 'active_voice_clients'):
+                for vc_guild_id, vc in self.cog.active_voice_clients.items():
+                    if vc and vc.is_connected():
+                        guild_id = vc_guild_id
+                        break
+            
+            if guild_id and hasattr(self.cog, 'set_processing_state'):
+                self.cog.set_processing_state(guild_id, "transcribing", "Converting speech to text")
+            
             # Transcribe audio
             segments, info = self.whisper_model.transcribe(filepath, beam_size=5)
             transcription = " ".join([segment.text for segment in segments]).strip()
@@ -1248,12 +2294,22 @@ class VoiceSink(voice_recv.AudioSink):
                 
                 # Process the message (only called once now)
                 if user:
+                    # Set processing state for voice message processing
+                    guild_id = user.guild.id if hasattr(user, 'guild') and user.guild else 0
+                    if guild_id and hasattr(self.cog, 'set_processing_state'):
+                        self.cog.set_processing_state(guild_id, "processing", f"Processing voice from {user.display_name}")
+                    
                     await self.cog.process_voice_message(user, transcription)
             
         except Exception as e:
             self.logger.error(f"Transcription error for user {user_id}: {e}")
         
         finally:
+            # Clear transcribing state
+            if guild_id and hasattr(self.cog, 'set_processing_state'):
+                self.cog.set_processing_state(guild_id, "idle", "")
+                self.logger.info(f"Cleared transcribing state for guild {guild_id}")
+            
             # Clean up file
             try:
                 os.remove(filepath)
@@ -1263,6 +2319,10 @@ class VoiceSink(voice_recv.AudioSink):
 
     def write(self, user, data: voice_recv.VoiceData):
         try:
+            # Check if VoiceSink is disabled (deafened)
+            if not self.decode:
+                return
+            
             if user is None or data.pcm is None:
                 return
             
@@ -1294,6 +2354,10 @@ class VoiceSink(voice_recv.AudioSink):
     def on_voice_member_speaking_start(self, member):
         """Discord detected user started speaking (push-to-talk pressed)"""
         try:
+            # Check if VoiceSink is disabled (deafened)
+            if not self.decode:
+                return
+                
             user_id = member.id
             if user_id not in self.user_recordings:
                 self.user_recordings[user_id] = self._init_user_recording()
@@ -1305,6 +2369,11 @@ class VoiceSink(voice_recv.AudioSink):
                 recording['buffer'] = []  # Clear any old data
                 self.logger.info(f"🎤 Started recording for {member.display_name}")
                 
+                # Set recording state
+                guild_id = member.guild.id if hasattr(member, 'guild') and member.guild else 0
+                if guild_id and hasattr(self.cog, 'set_processing_state'):
+                    self.cog.set_processing_state(guild_id, "recording", f"Recording from {member.display_name}")
+                
         except Exception as e:
             self.logger.error(f"Error in speaking start: {e}")
 
@@ -1312,9 +2381,20 @@ class VoiceSink(voice_recv.AudioSink):
     def on_voice_member_speaking_stop(self, member):
         """Discord detected user stopped speaking (push-to-talk released)"""
         try:
+            # Check if VoiceSink is disabled (deafened)
+            if not self.decode:
+                return
+                
             user_id = member.id
             if user_id in self.user_recordings and self.user_recordings[user_id]['recording']:
                 self.logger.info(f"🎤 Stopped recording for {member.display_name}")
+                
+                # Clear recording state
+                guild_id = member.guild.id if hasattr(member, 'guild') and member.guild else 0
+                if guild_id and hasattr(self.cog, 'set_processing_state'):
+                    self.cog.set_processing_state(guild_id, "idle", "")
+                    self.logger.info(f"Cleared recording state for guild {guild_id}")
+                
                 # Immediately finalize recording when user releases push-to-talk
                 asyncio.run_coroutine_threadsafe(
                     self.finalize_recording(user_id),
@@ -1418,14 +2498,42 @@ def main():
         # Then handle direct mentions/replies if it's not a command
         if is_direct and not message.content.startswith('!'):
             logger.info("\nProcessing direct mention...")
+            
+            # Send user message to dashboard
+            await bot.send_conversation_update({
+                'type': 'user_message',
+                'user_id': str(message.author.id),
+                'username': message.author.display_name,
+                'guild_id': message.guild.id,
+                'guild_name': message.guild.name,
+                'channel_id': message.channel.id,
+                'channel_name': message.channel.name,
+                'message': scrubbed_content,
+                'timestamp': message.created_at.isoformat()
+            })
+            
             response = await bot.conversation_handler.process_interaction(
                 user_id=str(message.author),
                 guild_id=message.guild.id,
                 message_content=scrubbed_content,
                 interaction_type="direct_mention",
-                context=context
+                context=context,
+                username=message.author.display_name
             )
             if response['response']:
+                # Send bot response to dashboard
+                await bot.send_conversation_update({
+                    'type': 'bot_response',
+                    'user_id': str(message.author.id),
+                    'username': message.author.display_name,
+                    'guild_id': message.guild.id,
+                    'guild_name': message.guild.name,
+                    'channel_id': message.channel.id,
+                    'channel_name': message.channel.name,
+                    'response': response['response'],
+                    'timestamp': datetime.datetime.now().isoformat()
+                })
+                
                 await bot.process_message(message, response['response'], use_tts=True)
 
     async def setup_hook():

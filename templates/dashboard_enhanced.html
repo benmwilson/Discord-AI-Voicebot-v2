@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 Miku Bot Dashboard - Enhanced with Penguin UI</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Shared Navbar JavaScript -->
+    <script src="/static/shared_navbar.js"></script>
+    
+    <!-- Custom Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'discord': '#5865F2',
+                        'discord-dark': '#404EED',
+                        'penguin': {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Penguin UI Enhanced Styles -->
+    <style>
+        /* Penguin UI Enhanced Components */
+        .penguin-card {
+            @apply bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200;
+        }
+        
+        .penguin-button {
+            @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+        }
+        
+        .penguin-button-primary {
+            @apply penguin-button bg-penguin-600 text-white hover:bg-penguin-700 focus:ring-penguin-500;
+        }
+        
+        .penguin-button-secondary {
+            @apply penguin-button bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500;
+        }
+        
+        .penguin-button-danger {
+            @apply penguin-button bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+        }
+        
+        .penguin-button-success {
+            @apply penguin-button bg-green-600 text-white hover:bg-green-700 focus:ring-green-500;
+        }
+        
+        .penguin-badge {
+            @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+        }
+        
+        .penguin-badge-success {
+            @apply penguin-badge bg-green-100 text-green-800;
+        }
+        
+        .penguin-badge-warning {
+            @apply penguin-badge bg-yellow-100 text-yellow-800;
+        }
+        
+        .penguin-badge-danger {
+            @apply penguin-badge bg-red-100 text-red-800;
+        }
+        
+        .penguin-badge-info {
+            @apply penguin-badge bg-blue-100 text-blue-800;
+        }
+        
+        .penguin-alert {
+            @apply p-4 rounded-lg border-l-4;
+        }
+        
+        .penguin-alert-success {
+            @apply penguin-alert bg-green-50 border-green-400 text-green-700;
+        }
+        
+        .penguin-alert-warning {
+            @apply penguin-alert bg-yellow-50 border-yellow-400 text-yellow-700;
+        }
+        
+        .penguin-alert-danger {
+            @apply penguin-alert bg-red-50 border-red-400 text-red-700;
+        }
+        
+        .penguin-alert-info {
+            @apply penguin-alert bg-blue-50 border-blue-400 text-blue-700;
+        }
+        
+        .penguin-skeleton {
+            @apply animate-pulse bg-gray-200 rounded;
+        }
+        
+        .penguin-spinner {
+            @apply animate-spin rounded-full border-2 border-gray-300 border-t-penguin-600;
+        }
+        
+        .penguin-toast {
+            @apply fixed top-4 right-4 z-50 max-w-sm w-full bg-white rounded-lg shadow-lg border border-gray-200 p-4 transform transition-all duration-300;
+        }
+        
+        .penguin-chat-bubble {
+            @apply max-w-xs lg:max-w-md px-4 py-2 rounded-lg;
+        }
+        
+        .penguin-chat-bubble-user {
+            @apply penguin-chat-bubble bg-penguin-600 text-white ml-auto;
+        }
+        
+        .penguin-chat-bubble-bot {
+            @apply penguin-chat-bubble bg-gray-100 text-gray-900;
+        }
+        
+        /* Enhanced gradient cards */
+        .penguin-gradient-card {
+            @apply bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200;
+        }
+        
+        /* Enhanced status indicators */
+        .penguin-status-online {
+            @apply w-3 h-3 rounded-full bg-green-500 animate-pulse;
+        }
+        
+        .penguin-status-offline {
+            @apply w-3 h-3 rounded-full bg-red-500;
+        }
+        
+        .penguin-status-connecting {
+            @apply w-3 h-3 rounded-full bg-yellow-500 animate-pulse;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen" x-data="dashboard()">
+    <!-- Shared Penguin UI Navbar -->
+    <div id="shared-navbar">
+        <!-- Navbar will be loaded here -->
+    </div>
+
+    <!-- Main Dashboard Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Status Overview Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <!-- Bot Status Card -->
+            <div class="penguin-gradient-card p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Bot Status</p>
+                        <p class="text-2xl font-bold text-gray-900" id="botStatus">Connecting...</p>
+                        <div class="mt-2">
+                            <span id="statusBadge" class="penguin-badge penguin-badge-warning">Connecting</span>
+                        </div>
+                    </div>
+                    <div class="w-12 h-12 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">🤖</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Guilds Card -->
+            <div class="penguin-gradient-card p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Guilds</p>
+                        <p class="text-2xl font-bold text-gray-900" id="guildCount">0</p>
+                        <div class="mt-2">
+                            <span class="text-xs text-gray-500">Active servers</span>
+                        </div>
+                    </div>
+                    <div class="w-12 h-12 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">🏰</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Card -->
+            <div class="penguin-gradient-card p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Users</p>
+                        <p class="text-2xl font-bold text-gray-900" id="userCount">0</p>
+                        <div class="mt-2">
+                            <span class="text-xs text-gray-500">Total members</span>
+                        </div>
+                    </div>
+                    <div class="w-12 h-12 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">👥</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Latency Card -->
+            <div class="penguin-gradient-card p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Latency</p>
+                        <p class="text-2xl font-bold text-gray-900" id="latency">-- ms</p>
+                        <div class="mt-2">
+                            <span id="latencyBadge" class="penguin-badge penguin-badge-info">Unknown</span>
+                        </div>
+                    </div>
+                    <div class="w-12 h-12 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">⚡</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Uptime Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-600">Uptime</p>
+                    <p class="text-3xl font-bold text-gray-900" id="uptime">0:00:00</p>
+                </div>
+                <div class="w-16 h-16 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <span class="text-3xl">⏱️</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Voice Control Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <!-- Voice Status Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="p-6 border-b border-gray-200">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-2xl">🎤</span>
+                        <h3 class="text-lg font-semibold text-gray-900">Voice Status</h3>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div id="voiceChannelInfo" class="text-center py-8">
+                        <div class="text-gray-500 mb-4">No Active Voice Channels</div>
+                        <div class="text-sm text-gray-400">Bot is not connected to any voice channels</div>
+                    </div>
+                    <!-- Deafen Status Indicator -->
+                    <div id="deafenStatus" class="mt-4 p-3 rounded-lg bg-gray-100 hidden">
+                        <div class="flex items-center justify-center space-x-2">
+                            <span id="deafenStatusIcon" class="text-lg">🔊</span>
+                            <span id="deafenStatusText" class="text-sm font-medium text-gray-700">Listening</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Processing Queue Display -->
+                    <div id="queueStatus" class="mt-4 p-3 rounded-lg bg-gray-50 border border-gray-200 hidden">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium text-gray-700">Processing Queue</span>
+                            <span id="queueSize" class="text-xs text-gray-500">0 items</span>
+                        </div>
+                        <div id="queueItems" class="space-y-1">
+                            <!-- Queue items will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Voice Controls Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="p-6 border-b border-gray-200">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-2xl">🎛️</span>
+                        <h3 class="text-lg font-semibold text-gray-900">Voice Controls</h3>
+                    </div>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Select Voice Channel:</label>
+                        <select id="voiceChannelSelect" onchange="updateJoinButtonState()" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Loading channels...</option>
+                        </select>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button id="joinVoiceBtn" onclick="joinVoice()" disabled class="flex-1 penguin-button-success disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span id="joinVoiceIcon">▶️</span> <span id="joinVoiceText">Join Voice</span>
+                        </button>
+                        <button id="leaveVoiceBtn" onclick="leaveVoice()" disabled class="flex-1 penguin-button-danger disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span>⏹️</span> Leave Voice
+                        </button>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button id="deafenBtn" onclick="deafenBot()" disabled class="flex-1 penguin-button-secondary disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span>🔇</span> Deafen Bot
+                        </button>
+                        <button id="undeafenBtn" onclick="undeafenBot()" disabled class="flex-1 penguin-button-secondary disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span>🔊</span> Undeafen Bot
+                        </button>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button id="interruptBtn" onclick="interruptBot()" class="flex-1 penguin-button-danger disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span>⏹️</span> Interrupt Bot
+                        </button>
+                        <button onclick="refreshChannels()" class="flex-1 penguin-button-secondary disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span>🔄</span> Refresh Channels
+                    </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Conversation Flow -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-2xl">💬</span>
+                        <h3 class="text-lg font-semibold text-gray-900">Live Conversation Flow</h3>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="clearConversation()" class="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">
+                            <span>🗑️</span> Clear
+                        </button>
+                        <button onclick="toggleConversation()" id="toggleConversationBtn" class="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">
+                            <span>👁️</span> Hide
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="conversationContainer" class="p-6">
+                <div class="mb-2 text-sm text-gray-600">
+                    <span class="font-semibold">💬 Live Conversation</span>
+                    <span class="text-xs ml-2">(Newest messages at top)</span>
+                </div>
+                <div id="conversationViewer" class="max-h-96 overflow-y-auto bg-gray-900 rounded-lg p-4 font-mono text-sm">
+                    <div id="conversationContent">
+                        <div class="text-gray-400 text-center py-8">
+                            <div class="text-lg mb-2">💬 Conversation Log</div>
+                            <div class="text-sm">Waiting for messages...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bot Logs -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-2xl">📋</span>
+                        <h3 class="text-lg font-semibold text-gray-900">Bot Logs</h3>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="toggleLogs()" id="toggleLogsBtn" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm">
+                            <span>👁️</span> Show Logs
+                        </button>
+                        <button onclick="clearLogs()" class="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">
+                            <span>🗑️</span> Clear
+                        </button>
+                        <button onclick="refreshLogs()" class="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">
+                            <span>🔄</span> Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="logContainer" class="p-6">
+                <div id="logViewer" class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm max-h-96 overflow-y-auto">
+                    Loading logs...
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center space-x-2">
+                    <span class="text-2xl">🕒</span>
+                    <h3 class="text-lg font-semibold text-gray-900">Recent Activity</h3>
+                </div>
+            </div>
+            <div id="activityList" class="p-6">
+                <div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                    <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-900">Dashboard initialized</div>
+                        <div class="text-xs text-gray-500" id="initTime">--:--:--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Alpine.js Dashboard Component -->
+    <script>
+        function dashboard() {
+            return {
+                botStatus: {
+                    online: false,
+                    guilds: [],
+                    users: 0,
+                    latency: 0,
+                    uptime: '0:00:00',
+                    voice_channels: [],
+                    in_voice: false
+                },
+                voiceStatusTimeout: null,
+                
+                init() {
+                    console.log('Dashboard initialized');
+                    this.loadSharedNavbar();
+                    this.initWebSocket();
+                    this.loadVoiceChannels();
+                    this.loadLogs();
+                    this.startLogUpdates();
+                    this.loadConversationHistory();
+                    this.setInitialVoiceButtonStates();
+                    this.startHeartbeat();
+                    // Initialize interrupt button state
+                    buttonStateManager.updateInterruptButton('idle');
+                },
+                
+                async loadSharedNavbar() {
+                    // Use the global NavbarManager
+                    if (window.NavbarManager) {
+                        window.NavbarManager.init();
+                    }
+                },
+                
+                setInitialVoiceButtonStates() {
+                    // Set initial button states based on current bot status
+                    const joinBtn = document.getElementById('joinVoiceBtn');
+                    const leaveBtn = document.getElementById('leaveVoiceBtn');
+                    const refreshBtn = document.querySelector('button[onclick="refreshChannels()"]');
+                    const deafenBtn = document.getElementById('deafenBtn');
+                    const undeafenBtn = document.getElementById('undeafenBtn');
+                    const voiceChannelInfo = document.getElementById('voiceChannelInfo');
+                    
+                    // Initially, assume bot is offline and not in voice (buttons will be updated when real status comes in)
+                    joinBtn.disabled = true; // Disabled until bot is online
+                    leaveBtn.disabled = true;
+                    if (refreshBtn) {
+                        refreshBtn.disabled = true; // Disabled until bot is online
+                    }
+                    if (deafenBtn) {
+                        deafenBtn.disabled = true; // Disabled until bot is online and in voice
+                    }
+                    if (undeafenBtn) {
+                        undeafenBtn.disabled = true; // Disabled until bot is online and in voice
+                    }
+                    
+                    // Set initial voice channel info
+                    voiceChannelInfo.innerHTML = `
+                        <div class="text-center">
+                            <div class="text-gray-500 mb-2">No Active Voice Channels</div>
+                            <div class="text-sm text-gray-400">Bot is not connected to any voice channels</div>
+                        </div>
+                    `;
+                    
+                    console.log('Set initial voice button states: join disabled (bot offline), leave disabled, refresh disabled, deafen disabled');
+                },
+                
+                startHeartbeat() {
+                    // DISABLED: Heartbeat was causing flickering and API errors
+                    // WebSocket provides real-time updates, so heartbeat is not needed
+                    console.log('Heartbeat disabled - using WebSocket for real-time updates');
+                },
+                
+                initWebSocket() {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+                    
+                    ws.onopen = function(event) {
+                        console.log('WebSocket connected');
+                        addActivity('WebSocket connected', 'success');
+                    };
+                    
+                    ws.onmessage = function(event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            console.log('Received WebSocket update:', data);
+                            
+                            // Handle conversation updates separately
+                            if (data.type === 'conversation') {
+                                this.addConversationMessage(data.data);
+                                return;
+                            }
+                            
+                            // Update dashboard data only - NO BUTTON UPDATES
+                            this.updateDashboardDataOnly(data);
+                        } catch (e) {
+                            console.error('Error parsing WebSocket message:', e);
+                        }
+                    }.bind(this);
+                    
+                    ws.onclose = function(event) {
+                        console.log('WebSocket disconnected');
+                        addActivity('WebSocket disconnected', 'error');
+                        
+                        // Set bot as offline when WebSocket disconnects
+                        this.botStatus.online = false;
+                        this.botStatus.guilds = [];
+                        this.botStatus.users = 0;
+                        this.botStatus.voice_channels = [];
+                        this.botStatus.in_voice = false;
+                        
+                        // Update UI to show offline status
+                        document.getElementById('botStatus').textContent = 'Offline';
+                        document.getElementById('guildCount').textContent = '0';
+                        document.getElementById('userCount').textContent = '0';
+                        document.getElementById('latency').textContent = '-- ms';
+                        document.getElementById('uptime').textContent = '0:00:00';
+                        
+                        // Disable all voice buttons
+                        updateJoinButtonState();
+                        
+                        // Reconnect after 3 seconds
+                        setTimeout(() => this.initWebSocket(), 3000);
+                    }.bind(this);
+                    
+                    ws.onerror = function(event) {
+                        console.log('WebSocket error');
+                        addActivity('WebSocket error', 'error');
+                    }.bind(this);
+                },
+                
+                updateDashboard(data) {
+                    console.log('Updating dashboard with:', data);
+                    
+                    // Handle conversation updates FIRST - don't process as status updates
+                    if (data.type === 'conversation') {
+                        this.addConversationMessage(data.data);
+                        return; // Exit early for conversation updates
+                    }
+                    
+                    
+                    // Throttle status updates to prevent flickering
+                    const now = Date.now();
+                    if (this.lastStatusUpdate && (now - this.lastStatusUpdate) < 2000) {
+                        console.log('Status update throttled to prevent flickering');
+                        return;
+                    }
+                    this.lastStatusUpdate = now;
+                    
+                    // Update bot status (only for actual status updates)
+                    this.botStatus = { ...this.botStatus, ...data };
+                    console.log('Updated botStatus:', this.botStatus);
+                    console.log('Bot online status:', this.botStatus.online);
+                    
+                    // Update DOM elements
+                    document.getElementById('botStatus').textContent = data.online ? 'Online' : 'Offline';
+                    document.getElementById('guildCount').textContent = data.guilds ? data.guilds.length : 0;
+                    document.getElementById('userCount').textContent = data.users || 0;
+                    document.getElementById('latency').textContent = data.latency ? `${data.latency} ms` : '-- ms';
+                    document.getElementById('uptime').textContent = data.uptime || '0:00:00';
+                    
+                    // Update voice status display (safe - no button changes)
+                    this.debouncedUpdateVoiceStatus(data);
+                    
+                    // DISABLED: No more button updates from status updates
+                    // Buttons are now completely independent of status updates
+                    console.log('Status update received - voice display updated, buttons left unchanged');
+                    
+                    // Update last updated time
+                    document.getElementById('lastUpdated').textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+                },
+                
+                // NEW: Data-only updates (no button changes)
+                updateDashboardDataOnly(data) {
+                    console.log('Updating dashboard data only (no buttons):', data);
+                    
+                    // Update bot status
+                    this.botStatus = { ...this.botStatus, ...data };
+                    
+                    // Update DOM elements ONLY
+                    document.getElementById('botStatus').textContent = data.online ? 'Online' : 'Offline';
+                    document.getElementById('guildCount').textContent = data.guilds ? data.guilds.length : 0;
+                    document.getElementById('userCount').textContent = data.users || 0;
+                    document.getElementById('latency').textContent = data.latency ? `${data.latency} ms` : '-- ms';
+                    document.getElementById('uptime').textContent = data.uptime || '0:00:00';
+                    
+                    // Update Penguin UI badges
+                    this.updateStatusBadge(data.online);
+                    this.updateLatencyBadge(data.latency);
+                    
+                    // Update navbar status indicators (desktop and mobile)
+                    const statusIndicator = document.getElementById('statusIndicator');
+                    const statusText = document.getElementById('statusText');
+                    const statusIndicatorMobile = document.getElementById('statusIndicatorMobile');
+                    const statusTextMobile = document.getElementById('statusTextMobile');
+                    
+                    if (statusIndicator) {
+                        statusIndicator.className = `w-3 h-3 rounded-full ${data.online ? 'bg-green-500' : 'bg-red-500'}`;
+                    }
+                    if (statusText) {
+                        statusText.textContent = data.online ? 'Online' : 'Offline';
+                    }
+                    if (statusIndicatorMobile) {
+                        statusIndicatorMobile.className = `w-3 h-3 rounded-full ${data.online ? 'bg-green-500' : 'bg-red-500'}`;
+                    }
+                    if (statusTextMobile) {
+                        statusTextMobile.textContent = data.online ? 'Online' : 'Offline';
+                    }
+                    
+                    // Update voice status display (safe - no button changes)
+                    this.updateVoiceStatus(data);
+                    
+                    // Update last updated time (desktop and mobile)
+                    const lastUpdated = document.getElementById('lastUpdated');
+                    const lastUpdatedMobile = document.getElementById('lastUpdatedMobile');
+                    const timeString = `Last updated: ${new Date().toLocaleTimeString()}`;
+                    
+                    if (lastUpdated) {
+                        lastUpdated.textContent = timeString;
+                    }
+                    if (lastUpdatedMobile) {
+                        lastUpdatedMobile.textContent = timeString;
+                    }
+                    
+                    console.log('Data updated - voice display updated, buttons completely untouched');
+                },
+                
+                // Penguin UI Badge Updates
+                updateStatusBadge(isOnline) {
+                    const badge = document.getElementById('statusBadge');
+                    if (badge) {
+                        if (isOnline) {
+                            badge.className = 'penguin-badge penguin-badge-success';
+                            badge.textContent = 'Online';
+                        } else {
+                            badge.className = 'penguin-badge penguin-badge-danger';
+                            badge.textContent = 'Offline';
+                        }
+                    }
+                },
+                
+                updateLatencyBadge(latency) {
+                    const badge = document.getElementById('latencyBadge');
+                    if (badge && latency) {
+                        if (latency < 100) {
+                            badge.className = 'penguin-badge penguin-badge-success';
+                            badge.textContent = 'Excellent';
+                        } else if (latency < 200) {
+                            badge.className = 'penguin-badge penguin-badge-info';
+                            badge.textContent = 'Good';
+                        } else {
+                            badge.className = 'penguin-badge penguin-badge-warning';
+                            badge.textContent = 'Slow';
+                        }
+                    }
+                },
+                
+                updateVoiceStatus(data) {
+                    const voiceChannelInfo = document.getElementById('voiceChannelInfo');
+                    const joinBtn = document.getElementById('joinVoiceBtn');
+                    const leaveBtn = document.getElementById('leaveVoiceBtn');
+                    
+                    // Always update voice status display - this is safe and needed
+                    const isInVoice = data.in_voice === true && data.voice_channels && data.voice_channels.length > 0;
+                    
+                        if (isInVoice) {
+                            const voiceChannel = data.voice_channels[0];
+                            voiceChannelInfo.innerHTML = `
+                                <div class="text-center">
+                                    <div class="text-lg font-semibold text-gray-900 mb-2">Connected to ${voiceChannel.channel_name}</div>
+                                    <div class="text-sm text-gray-600">Server: ${voiceChannel.guild_name}</div>
+                                    <div class="text-sm text-gray-600">Status: ${voiceChannel.connected ? 'Connected' : 'Disconnected'}</div>
+                                    <div class="text-sm text-gray-600">Playing: ${voiceChannel.playing ? 'Yes' : 'No'}</div>
+                                </div>
+                            `;
+                        console.log('Voice status: Connected to', voiceChannel.channel_name);
+                        
+                        // Update voice control buttons (join/leave) - this is safe
+                        // Join button enabled for channel switching, leave button enabled
+                        joinBtn.disabled = false; // Allow switching channels
+                            leaveBtn.disabled = false;
+                        
+                        // Enable refresh button when bot is online
+                        const refreshBtn = document.querySelector('button[onclick="refreshChannels()"]');
+                        if (refreshBtn) {
+                            refreshBtn.disabled = false;
+                        }
+                        
+                        // Update join button text to indicate switching
+                        const joinIcon = document.getElementById('joinVoiceIcon');
+                        const joinText = document.getElementById('joinVoiceText');
+                        if (joinIcon && joinText) {
+                            joinIcon.textContent = '🔄';
+                            joinText.textContent = 'Switch Channel';
+                        }
+                        } else {
+                            voiceChannelInfo.innerHTML = `
+                                <div class="text-center">
+                                    <div class="text-gray-500 mb-2">No Active Voice Channels</div>
+                                    <div class="text-sm text-gray-400">Bot is not connected to any voice channels</div>
+                                </div>
+                            `;
+                        console.log('Voice status: Not connected');
+                        
+                        // Update voice control buttons (join/leave) - this is safe
+                            joinBtn.disabled = false;
+                            leaveBtn.disabled = true;
+                        
+                        // Enable refresh button when bot is online
+                        const refreshBtn = document.querySelector('button[onclick="refreshChannels()"]');
+                        if (refreshBtn) {
+                            refreshBtn.disabled = false;
+                        }
+                        
+                        // Reset join button text to normal
+                        const joinIcon = document.getElementById('joinVoiceIcon');
+                        const joinText = document.getElementById('joinVoiceText');
+                        if (joinIcon && joinText) {
+                            joinIcon.textContent = '▶️';
+                            joinText.textContent = 'Join Voice';
+                        }
+                    }
+                    
+                    // Update the stored voice status for button state manager
+                    this.botStatus.in_voice = isInVoice;
+                    this.botStatus.voice_channels = data.voice_channels || [];
+                    
+                    // Handle deafen buttons based on voice connection status
+                    if (isInVoice) {
+                        // Bot is in voice - check actual deafen status from bot
+                        const isDeafened = data.is_deafened === true;
+                        
+                        // Update button state manager with actual deafen status
+                        buttonStateManager.setDeafenState(isDeafened);
+                        
+                        // Show deafen status indicator and update with processing state
+                        this.updateDeafenStatus();
+                        
+                        // Update interrupt button based on processing state
+                        buttonStateManager.updateInterruptButton(data.processing_state || 'idle');
+                        
+                        // Update queue status
+                        this.updateQueueStatus();
+                        
+                        // Update dropdown to show connected channel with other options
+                        const channelSelect = document.getElementById('voiceChannelSelect');
+                        if (channelSelect && data.voice_channels && data.voice_channels.length > 0) {
+                            const currentChannel = data.voice_channels[0];
+                            
+                            // Add the connected channel as first option
+                            channelSelect.innerHTML = `<option value="${currentChannel.channel_id}" selected>Connected to: ${currentChannel.channel_name} (${currentChannel.guild_name})</option>`;
+                            
+                            // Keep existing other options if they exist, or reload all channels
+                            if (channelSelect.children.length === 1) {
+                                // If only the connected channel is shown, reload all channels
+                                this.loadVoiceChannels();
+                            }
+                            
+                            console.log('Updated dropdown to show connected channel:', currentChannel.channel_name);
+                        }
+                    } else {
+                        // Bot not in voice - reset deafen buttons and hide status
+                        buttonStateManager.resetDeafenState();
+                        this.hideDeafenStatus();
+                        
+                        // Reload voice channels to show normal list
+                        this.loadVoiceChannels();
+                    }
+                    
+                    console.log('Voice control buttons updated - deafen buttons managed separately');
+                },
+                
+                updateDeafenStatus() {
+                    const deafenStatus = document.getElementById('deafenStatus');
+                    const deafenStatusIcon = document.getElementById('deafenStatusIcon');
+                    const deafenStatusText = document.getElementById('deafenStatusText');
+                    
+                    if (deafenStatus && deafenStatusIcon && deafenStatusText) {
+                        deafenStatus.classList.remove('hidden');
+                        
+                        // Get processing state from bot status
+                        const processingState = this.botStatus.processing_state || 'idle';
+                        const currentActivity = this.botStatus.current_activity || '';
+                        const queueSize = this.botStatus.queue_size || 0;
+                        const processingQueue = this.botStatus.processing_queue || [];
+                        
+                        // Update based on processing state and deafen state
+                        if (buttonStateManager.deafenState === true) {
+                            // Bot is deafened
+                            deafenStatus.className = 'mt-4 p-3 rounded-lg bg-red-100 border border-red-200';
+                            deafenStatusIcon.textContent = '🔇';
+                            deafenStatusText.textContent = 'Deafened - Not Listening';
+                            deafenStatusText.className = 'text-sm font-medium text-red-700';
+                        } else {
+                            // Bot is listening - show processing state
+                            switch (processingState) {
+                                case 'recording':
+                                    deafenStatus.className = 'mt-4 p-3 rounded-lg bg-blue-100 border border-blue-200';
+                                    deafenStatusIcon.textContent = '🎤';
+                                    deafenStatusText.textContent = currentActivity || 'Recording Audio';
+                                    deafenStatusText.className = 'text-sm font-medium text-blue-700';
+                                    break;
+                                case 'transcribing':
+                                    deafenStatus.className = 'mt-4 p-3 rounded-lg bg-purple-100 border border-purple-200';
+                                    deafenStatusIcon.textContent = '🔄';
+                                    deafenStatusText.textContent = currentActivity || 'Converting Speech to Text';
+                                    deafenStatusText.className = 'text-sm font-medium text-purple-700';
+                                    break;
+                                case 'thinking':
+                                    deafenStatus.className = 'mt-4 p-3 rounded-lg bg-yellow-100 border border-yellow-200';
+                                    deafenStatusIcon.textContent = '🤔';
+                                    deafenStatusText.textContent = currentActivity || 'Thinking...';
+                                    deafenStatusText.className = 'text-sm font-medium text-yellow-700';
+                                    break;
+                                case 'waiting':
+                                    deafenStatus.className = 'mt-4 p-3 rounded-lg bg-orange-100 border border-orange-200';
+                                    deafenStatusIcon.textContent = '⏳';
+                                    deafenStatusText.textContent = currentActivity || 'Waiting in Queue';
+                                    deafenStatusText.className = 'text-sm font-medium text-orange-700';
+                                    break;
+                                case 'speaking':
+                                    deafenStatus.className = 'mt-4 p-3 rounded-lg bg-indigo-100 border border-indigo-200';
+                                    deafenStatusIcon.textContent = '🗣️';
+                                    let speakingText = currentActivity || 'Speaking';
+                                    if (queueSize > 0) {
+                                        speakingText += ` (Queue: ${queueSize} pending)`;
+                                    }
+                                    deafenStatusText.textContent = speakingText;
+                                    deafenStatusText.className = 'text-sm font-medium text-indigo-700';
+                                    break;
+                                default:
+                                    // Default listening state
+                                    deafenStatus.className = 'mt-4 p-3 rounded-lg bg-green-100 border border-green-200';
+                                    deafenStatusIcon.textContent = '🔊';
+                                    deafenStatusText.textContent = 'Listening';
+                                    deafenStatusText.className = 'text-sm font-medium text-green-700';
+                                    break;
+                            }
+                        }
+                    }
+                },
+                
+                hideDeafenStatus() {
+                    const deafenStatus = document.getElementById('deafenStatus');
+                    if (deafenStatus) {
+                        deafenStatus.classList.add('hidden');
+                    }
+                },
+                
+                updateQueueStatus() {
+                    const queueStatus = document.getElementById('queueStatus');
+                    const queueSize = document.getElementById('queueSize');
+                    const queueItems = document.getElementById('queueItems');
+                    
+                    if (queueStatus && queueSize && queueItems) {
+                        const queueSizeValue = this.botStatus.queue_size || 0;
+                        const processingQueue = this.botStatus.processing_queue || [];
+                        
+                        if (queueSizeValue > 0) {
+                            queueStatus.classList.remove('hidden');
+                            queueSize.textContent = `${queueSizeValue} item${queueSizeValue !== 1 ? 's' : ''}`;
+                            
+                            // Clear and populate queue items
+                            queueItems.innerHTML = '';
+                            processingQueue.forEach((item, index) => {
+                                const itemDiv = document.createElement('div');
+                                itemDiv.className = 'flex items-center space-x-2 text-xs text-gray-600';
+                                itemDiv.innerHTML = `
+                                    <span class="w-4 h-4 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs">${index + 1}</span>
+                                    <span>${item}</span>
+                                `;
+                                queueItems.appendChild(itemDiv);
+                            });
+                        } else {
+                            queueStatus.classList.add('hidden');
+                        }
+                    }
+                },
+                
+                debouncedUpdateVoiceStatus(data) {
+                    // Clear any existing timeout
+                    if (this.voiceStatusTimeout) {
+                        clearTimeout(this.voiceStatusTimeout);
+                    }
+                    
+                    // Set a new timeout to update voice status after a short delay
+                    this.voiceStatusTimeout = setTimeout(() => {
+                        this.updateVoiceStatus(data);
+                    }, 100); // 100ms debounce
+                },
+                
+                addConversationMessage(data, isInterrupted = false) {
+                    const content = document.getElementById('conversationContent');
+                    
+                    // Remove the "Waiting for messages..." placeholder if it exists
+                    const placeholder = content.querySelector('.text-gray-400');
+                    if (placeholder) {
+                        placeholder.remove();
+                    }
+                    
+                    if (data.type === 'session_start') {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = 'mb-3 p-2 bg-green-900 border-l-4 border-green-500 rounded';
+                        messageDiv.innerHTML = `
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-green-400 font-semibold">[SYSTEM]</span>
+                                <span class="text-green-600 text-xs">${new Date(data.timestamp).toLocaleTimeString()}</span>
+                            </div>
+                            <div class="text-green-300 text-sm">🎤 Voice session started in ${data.channel_name} (${data.guild_name})</div>
+                        `;
+                        content.insertBefore(messageDiv, content.firstChild);
+                        content.scrollTop = 0; // Scroll to top to show new messages
+                        this.saveConversationHistory();
+                        return;
+                    }
+                    
+                    if (data.type === 'session_end') {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = 'mb-3 p-2 bg-red-900 border-l-4 border-red-500 rounded';
+                        messageDiv.innerHTML = `
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-red-400 font-semibold">[SYSTEM]</span>
+                                <span class="text-red-600 text-xs">${new Date(data.timestamp).toLocaleTimeString()}</span>
+                            </div>
+                            <div class="text-red-300 text-sm">🔇 Voice session ended</div>
+                        `;
+                        content.insertBefore(messageDiv, content.firstChild);
+                        content.scrollTop = 0; // Scroll to top to show new messages
+                        this.saveConversationHistory();
+                        return;
+                    }
+                    
+                    // Handle regular messages
+                    const messageDiv = document.createElement('div');
+                    const isUser = data.type === 'user_message';
+                    const messageClass = isUser ? 'bg-blue-900 border-l-4 border-blue-500' : 'bg-purple-900 border-l-4 border-purple-500';
+                    const interruptClass = isInterrupted ? ' border-r-4 border-r-orange-500' : '';
+                    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    messageDiv.className = `${messageClass}${interruptClass} mb-3 p-2 rounded relative`;
+                    messageDiv.id = messageId;
+                    
+                    const timestamp = new Date(data.timestamp).toLocaleTimeString();
+                    const sender = isUser ? data.username : 'Miku';
+                    const messageText = isUser ? data.message : data.response;
+                    
+                    // Add interrupt indicator if this message was interrupted
+                    const interruptIndicator = isInterrupted ? `
+                        <div class="absolute top-1 right-1 bg-orange-500 text-orange-900 text-xs px-1 py-0.5 rounded-full font-bold">
+                            ⚠️ INTERRUPTED
+                        </div>
+                    ` : '';
+                    
+                    messageDiv.innerHTML = `
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-semibold ${isUser ? 'text-blue-400' : 'text-purple-400'}">${sender}</span>
+                            <div class="flex items-center space-x-2">
+                            <span class="text-xs ${isUser ? 'text-blue-600' : 'text-purple-600'}">${timestamp}</span>
+                                ${interruptIndicator}
+                            </div>
+                        </div>
+                        <div class="${isUser ? 'text-blue-300' : 'text-purple-300'} text-sm">${this.escapeHtml(messageText)}</div>
+                    `;
+                    
+                    content.insertBefore(messageDiv, content.firstChild);
+                    content.scrollTop = 0; // Scroll to top to show new messages
+                    
+                    // If this is a bot message, mark it as the currently active message
+                    if (!isUser) {
+                        window.currentActiveMessageId = messageId;
+                        console.log('Set current active message ID:', messageId);
+                    }
+                    
+                    // Save conversation history
+                    this.saveConversationHistory();
+                },
+                
+                escapeHtml(text) {
+                    const div = document.createElement('div');
+                    div.textContent = text;
+                    return div.innerHTML;
+                },
+                
+                saveConversationHistory() {
+                    const content = document.getElementById('conversationContent');
+                    if (content) {
+                        localStorage.setItem('miku_conversation_history', content.innerHTML);
+                    }
+                },
+                
+                loadConversationHistory() {
+                    const content = document.getElementById('conversationContent');
+                    if (content) {
+                        const saved = localStorage.getItem('miku_conversation_history');
+                        if (saved) {
+                            content.innerHTML = saved;
+                        }
+                    }
+                },
+                
+                clearConversationHistory() {
+                    const content = document.getElementById('conversationContent');
+                    if (content) {
+                        content.innerHTML = `
+                            <div class="text-gray-400 text-center py-8">
+                                <div class="text-lg mb-2">💬 Conversation Log</div>
+                                <div class="text-sm">Waiting for messages...</div>
+                            </div>
+                        `;
+                        localStorage.removeItem('miku_conversation_history');
+                    }
+                },
+                
+                async loadVoiceChannels() {
+                    try {
+                        console.log('Loading voice channels...');
+                        const response = await fetch('/api/bot/voice-channels');
+                        if (response.ok) {
+                            const channels = await response.json();
+                            console.log('Loaded voice channels:', channels);
+                            const select = document.getElementById('voiceChannelSelect');
+                            
+                            // Check if bot is currently in a voice channel
+                            const currentStatus = this.botStatus;
+                            if (currentStatus && currentStatus.in_voice && currentStatus.voice_channels && currentStatus.voice_channels.length > 0) {
+                                const currentChannel = currentStatus.voice_channels[0];
+                                
+                                // Add the connected channel as first option
+                                select.innerHTML = `<option value="${currentChannel.channel_id}" selected>Connected to: ${currentChannel.channel_name} (${currentChannel.guild_name})</option>`;
+                                
+                                // Add all other available channels (excluding the connected one)
+                                channels.forEach(channel => {
+                                    // Compare by name since IDs might not match between APIs
+                                    const isConnectedChannel = channel.name === currentChannel.channel_name && 
+                                                             channel.guild_name === currentChannel.guild_name;
+                                    
+                                    if (!isConnectedChannel) {
+                                        const option = document.createElement('option');
+                                        option.value = channel.id;
+                                        option.textContent = `${channel.name} (${channel.guild_name})`;
+                                        select.appendChild(option);
+                                    } else {
+                                        console.log('Skipping duplicate channel by name:', channel.name, 'vs connected:', currentChannel.channel_name);
+                                    }
+                                });
+                                
+                                console.log('Bot is connected to:', currentChannel.channel_name, 'ID:', currentChannel.channel_id);
+                                console.log('Available channels:', channels.map(c => ({name: c.name, id: c.id})));
+                                console.log('Total options in dropdown:', select.children.length);
+                            } else {
+                            select.innerHTML = '<option value="">Select a voice channel...</option>';
+                            
+                            channels.forEach(channel => {
+                                const option = document.createElement('option');
+                                option.value = channel.id;
+                                option.textContent = `${channel.name} (${channel.guild_name})`;
+                                select.appendChild(option);
+                            });
+                            }
+                            
+                            // Update button states after loading channels
+                            console.log('Calling updateJoinButtonState after loading channels');
+                            updateJoinButtonState();
+                        } else {
+                            console.error('Failed to load voice channels:', response.status, response.statusText);
+                        }
+                    } catch (error) {
+                        console.error('Error loading voice channels:', error);
+                    }
+                },
+                
+                async loadLogs() {
+                    try {
+                        console.log('Loading logs...');
+                        const response = await fetch('/api/logs');
+                        console.log('Logs response status:', response.status);
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            console.log('Logs data received:', data.success, 'Total lines:', data.total_lines);
+                            
+                            const logViewer = document.getElementById('logViewer');
+                            if (logViewer) {
+                                // Simple test - show raw logs first
+                                const rawLogs = data.logs.slice(-20).join('\n');
+                                logViewer.innerHTML = `<pre class="text-green-400">${this.escapeHtml(rawLogs)}</pre>`;
+                                
+                                // Auto-scroll to bottom
+                                logViewer.scrollTop = logViewer.scrollHeight;
+                                console.log('Logs updated in viewer - showing raw logs');
+                            } else {
+                                console.error('logViewer element not found');
+                            }
+                        } else {
+                            console.error('Failed to load logs:', response.status);
+                        }
+                    } catch (error) {
+                        console.error('Error loading logs:', error);
+                    }
+                },
+                
+                startLogUpdates() {
+                    console.log('Starting log updates...');
+                    // Load logs immediately
+                    this.loadLogs();
+                    
+                    // Update logs every 2 seconds for live updates
+                    this.logUpdateInterval = setInterval(() => {
+                        console.log('Auto-refreshing logs...');
+                        this.loadLogs();
+                    }, 2000);
+                },
+                
+                stopLogUpdates() {
+                    if (this.logUpdateInterval) {
+                        clearInterval(this.logUpdateInterval);
+                        this.logUpdateInterval = null;
+                    }
+                },
+                
+                parseAndStyleLogs(logText) {
+                    const lines = logText.split('\n');
+                    return lines.map(line => {
+                        if (!line.trim()) return '<br>';
+                        
+                        const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d{3})?)/);
+                        if (!timestampMatch) return `<div class="text-gray-300">${this.escapeHtml(line)}</div>`;
+                        
+                        const timestamp = timestampMatch[1];
+                        const rest = line.substring(timestamp.length).trim();
+                        
+                        const levelMatch = rest.match(/^- (\w+) - (\w+) - (.+)$/);
+                        if (!levelMatch) {
+                            return `<div class="text-gray-300">
+                                <span class="text-gray-500">${this.escapeHtml(timestamp)}</span>
+                                <span class="text-gray-300">${this.escapeHtml(rest)}</span>
+                            </div>`;
+                        }
+                        
+                        const [, level, module, message] = levelMatch;
+                        
+                        let levelColor = 'text-gray-300';
+                        if (level === 'INFO') levelColor = 'text-green-400';
+                        else if (level === 'ERROR') levelColor = 'text-red-400';
+                        else if (level === 'WARNING') levelColor = 'text-yellow-400';
+                        else if (level === 'DEBUG') levelColor = 'text-blue-400';
+                        
+                        return `<div class="text-gray-300">
+                            <span class="text-gray-500">${this.escapeHtml(timestamp)}</span>
+                            <span class="${levelColor}">${this.escapeHtml(level)}</span>
+                            <span class="text-purple-400">${this.escapeHtml(module)}</span>
+                            <span class="text-gray-300">${this.escapeHtml(message)}</span>
+                        </div>`;
+                    }).join('');
+                }
+            }
+        }
+        
+        // Global functions for backward compatibility
+        function addActivity(text, type) {
+            const activityList = document.getElementById('activityList');
+            const activityItem = document.createElement('div');
+            activityItem.className = 'flex items-center space-x-3 p-3 bg-gray-50 rounded-lg mt-2';
+            
+            const colorClass = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+            activityItem.innerHTML = `
+                <div class="w-2 h-2 ${colorClass} rounded-full"></div>
+                <div>
+                    <div class="text-sm font-medium text-gray-900">${text}</div>
+                    <div class="text-xs text-gray-500">${new Date().toLocaleTimeString()}</div>
+                </div>
+            `;
+            
+            activityList.appendChild(activityItem);
+            activityList.scrollTop = activityList.scrollHeight;
+        }
+        
+        function joinVoice() {
+            const channelSelect = document.getElementById('voiceChannelSelect');
+            const channelId = channelSelect.value;
+            
+            if (!channelId) {
+                addActivity('Please select a voice channel first', 'error');
+                return;
+            }
+            
+            // Check if already in voice to determine action
+            const isCurrentlyInVoice = dashboard().botStatus.in_voice;
+            const actionText = isCurrentlyInVoice ? 'Switching to' : 'Joining';
+            
+            addActivity(`${actionText} voice channel...`, 'info');
+            
+            fetch('/api/bot/join-voice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel_id: channelId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (isCurrentlyInVoice) {
+                        addActivity(`Successfully switched to voice channel: ${data.channel_name}`, 'success');
+            } else {
+                    addActivity(`Successfully joined voice channel: ${data.channel_name}`, 'success');
+                    }
+                } else {
+                    addActivity(`Failed to ${isCurrentlyInVoice ? 'switch' : 'join'} voice: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error joining voice:', error);
+                addActivity(`Error ${isCurrentlyInVoice ? 'switching' : 'joining'} voice: ${error.message}`, 'error');
+            });
+        }
+        
+        function leaveVoice() {
+            fetch('/api/bot/leave-voice', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                if (data.success) {
+                    addActivity('Successfully left voice channel', 'success');
+                    } else {
+                    addActivity(`Failed to leave voice: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error leaving voice:', error);
+                addActivity(`Error leaving voice: ${error.message}`, 'error');
+            });
+        }
+        
+        function refreshChannels() {
+            addActivity('Refreshing voice channels...', 'info');
+            dashboard().loadVoiceChannels();
+        }
+        
+        function deafenBot() {
+            addActivity('Deafening bot...', 'info');
+            fetch('/api/bot/deafen', { method: 'POST' })
+            .then(response => response.json())
+                .then(data => {
+                if (data.success) {
+                    addActivity('Bot deafened - cannot hear voice', 'success');
+                    // Use new state manager
+                    buttonStateManager.setDeafenState(true);
+                } else {
+                    addActivity(`Failed to deafen: ${data.error}`, 'error');
+                    }
+                })
+                .catch(error => {
+                console.error('Error deafening bot:', error);
+                addActivity(`Error deafening: ${error.message}`, 'error');
+            });
+        }
+        
+        function undeafenBot() {
+            addActivity('Undeafening bot...', 'info');
+                fetch('/api/bot/undeafen', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        addActivity('Bot undeafened - can now hear voice', 'success');
+                    // Use new state manager
+                    buttonStateManager.setDeafenState(false);
+                    } else {
+                        addActivity(`Failed to undeafen: ${data.error}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error undeafening bot:', error);
+                    addActivity(`Error undeafening: ${error.message}`, 'error');
+                });
+        }
+        
+        function interruptBot() {
+            addActivity('Interrupting bot...', 'info');
+            
+            // First, mark the last bot message as interrupted in the UI
+            markLastBotMessageAsInterrupted();
+            
+            fetch('/api/bot/interrupt', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                    addActivity('Bot interrupted - stopped speaking', 'success');
+                    } else {
+                    addActivity(`Failed to interrupt: ${data.error}`, 'error');
+                    }
+                })
+                .catch(error => {
+                console.error('Error interrupting bot:', error);
+                addActivity(`Error interrupting: ${error.message}`, 'error');
+            });
+        }
+        
+        function markLastBotMessageAsInterrupted() {
+            const content = document.getElementById('conversationContent');
+            if (!content) return;
+            
+            // Find the currently active message by ID
+            let messageToInterrupt = null;
+            
+            if (window.currentActiveMessageId) {
+                messageToInterrupt = document.getElementById(window.currentActiveMessageId);
+                console.log('Found active message by ID:', window.currentActiveMessageId);
+            }
+            
+            // Fallback: find the last bot message if no active message ID
+            if (!messageToInterrupt) {
+                const messages = content.querySelectorAll('.conversation-message');
+                for (let i = 0; i < messages.length; i++) {
+                    const message = messages[i];
+                    if (message.classList.contains('bg-purple-900') && !message.classList.contains('interrupted')) {
+                        messageToInterrupt = message;
+                        console.log('Found last bot message as fallback');
+                        break;
+                    }
+                }
+            }
+            
+            if (messageToInterrupt && !messageToInterrupt.classList.contains('interrupted')) {
+                // Mark this message as interrupted
+                messageToInterrupt.classList.add('interrupted');
+                
+                // Add interrupt styling
+                messageToInterrupt.classList.add('border-r-4', 'border-r-orange-500');
+                messageToInterrupt.classList.add('relative');
+                
+                // Find the timestamp container and add interrupt indicator next to it
+                const headerDiv = messageToInterrupt.querySelector('.flex.justify-between.items-center');
+                if (headerDiv) {
+                    const rightSide = headerDiv.querySelector('span:last-child');
+                    if (rightSide) {
+                        // Create a container for timestamp and interrupt indicator
+                        const timestampContainer = document.createElement('div');
+                        timestampContainer.className = 'flex items-center space-x-2';
+                        
+                        // Move timestamp into container
+                        rightSide.parentNode.insertBefore(timestampContainer, rightSide);
+                        timestampContainer.appendChild(rightSide);
+                        
+                        // Add interrupt indicator
+                        const interruptIndicator = document.createElement('div');
+                        interruptIndicator.className = 'bg-orange-500 text-orange-900 text-xs px-1 py-0.5 rounded-full font-bold';
+                        interruptIndicator.innerHTML = '⚠️ INTERRUPTED';
+                        
+                        timestampContainer.appendChild(interruptIndicator);
+                    }
+                }
+                
+                // Add interrupt details as a small note
+                const detailsDiv = document.createElement('div');
+                detailsDiv.className = 'text-xs text-orange-400 mt-1 italic';
+                detailsDiv.textContent = '(Audio stopped, Processing stopped)';
+                messageToInterrupt.appendChild(detailsDiv);
+                
+                console.log('Marked active bot message as interrupted:', messageToInterrupt.id);
+                
+                // Clear the active message ID since it's now interrupted
+                window.currentActiveMessageId = null;
+            } else {
+                console.log('No active message found to interrupt');
+            }
+            
+            // Save conversation history
+            const contentHtml = content.innerHTML;
+            localStorage.setItem('miku_conversation_history', contentHtml);
+        }
+        
+        // COMPLETELY REDESIGNED: Button State Management System
+        // This system completely separates status updates from button states
+        // to eliminate all flickering
+        
+        class ButtonStateManager {
+            constructor() {
+                this.deafenState = null; // null = unknown, true = deafened, false = not deafened
+                this.buttons = {
+                    deafen: null,
+                    undeafen: null,
+                    interrupt: null
+                };
+                this.initializeButtons();
+            }
+            
+            initializeButtons() {
+                this.buttons.deafen = document.getElementById('deafenBtn');
+                this.buttons.undeafen = document.getElementById('undeafenBtn');
+                this.buttons.interrupt = document.getElementById('interruptBtn');
+            }
+            
+            // ONLY handle deafen buttons - voice control buttons handled separately
+            setDeafenState(isDeafened) {
+                // Only update if state actually changed
+                if (this.deafenState === isDeafened) {
+                    return; // No change needed
+                }
+                
+                this.deafenState = isDeafened;
+                
+                if (isDeafened) {
+                    this.buttons.deafen.disabled = true;
+                    this.buttons.undeafen.disabled = false;
+                } else {
+                    this.buttons.deafen.disabled = false;
+                    this.buttons.undeafen.disabled = true;
+                }
+                
+                // Update deafen status display
+                if (window.dashboard && window.dashboard().updateDeafenStatus) {
+                    window.dashboard().updateDeafenStatus();
+                }
+                
+                console.log(`Deafen state updated: ${isDeafened ? 'deafened' : 'not deafened'}`);
+            }
+            
+            // Reset deafen state when not in voice
+            resetDeafenState() {
+                this.deafenState = null;
+                this.buttons.deafen.disabled = true;
+                this.buttons.undeafen.disabled = true;
+                this.buttons.interrupt.disabled = true;
+                console.log('Deafen state reset - not in voice');
+            }
+            
+            // Handle interrupt button state based on processing state
+            updateInterruptButton(processingState) {
+                if (this.buttons.interrupt) {
+                    // Enable interrupt button when bot is speaking or thinking
+                    const canInterrupt = processingState === 'speaking' || processingState === 'thinking' || processingState === 'waiting';
+                    this.buttons.interrupt.disabled = !canInterrupt;
+                    console.log(`Interrupt button ${canInterrupt ? 'enabled' : 'disabled'} for state: ${processingState}`);
+                }
+            }
+        }
+        
+        // Global button state manager
+        const buttonStateManager = new ButtonStateManager();
+        
+        // NEW SYSTEM: Only update button states when voice connection actually changes
+        function updateVoiceConnectionStatus(data) {
+            if (!data) return;
+            
+            const isInVoice = data.in_voice === true;
+            const isDeafened = false; // We'll track this separately when user clicks deafen/undeafen
+            
+            // Only update if voice connection status actually changed
+            buttonStateManager.updateVoiceConnectionState(isInVoice, isDeafened);
+        }
+        
+        // DEPRECATED: Old function kept for compatibility but does nothing
+        function updateJoinButtonState(data = null) {
+            // This function is now deprecated - use updateVoiceConnectionStatus instead
+            console.log('updateJoinButtonState called - redirecting to new system');
+            updateVoiceConnectionStatus(data);
+        }
+        
+        function clearConversation() {
+            dashboard().clearConversationHistory();
+        }
+        
+        function toggleConversation() {
+            const container = document.getElementById('conversationContainer');
+            const btn = document.getElementById('toggleConversationBtn');
+            
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                btn.innerHTML = '<span>👁️</span> Hide';
+                    } else {
+                container.style.display = 'none';
+                btn.innerHTML = '<span>👁️</span> Show';
+            }
+        }
+        
+        function toggleLogs() {
+            const container = document.getElementById('logContainer');
+            const btn = document.getElementById('toggleLogsBtn');
+            
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                btn.innerHTML = '<span>👁️</span> Hide Logs';
+            } else {
+                container.style.display = 'none';
+                btn.innerHTML = '<span>👁️</span> Show Logs';
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('logViewer').innerHTML = '';
+        }
+        
+        function refreshLogs() {
+            dashboard().loadLogs();
+        }
+    </script>
+</body>
+</html>

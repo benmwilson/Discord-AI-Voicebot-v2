@@ -16,7 +16,7 @@ python-dotenv==1.0.1
 transformers==4.48.0
 
 # GPU-accelerated PyTorch (install separately)
-# Run: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Run: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # Additional dependencies that get installed automatically
 aiohappyeyeballs==2.6.1
@@ -27,14 +27,14 @@ av==14.0.0
 certifi==2024.12.14
 cffi==1.17.1
 charset-normalizer==3.4.1
-ctranslate2==4.5.0
+ctranslate2==4.6.0
 filelock==3.16.1
 frozenlist==1.7.0
 fsspec==2024.12.0
 huggingface-hub==0.27.1
 idna==3.10
 multidict==6.6.4
-onnxruntime==1.19.2
+onnxruntime==1.23.0
 propcache==0.3.2
 pycparser==2.22
 PyNaCl==1.5.0

@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Miku Bot - Memory Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Shared Navbar JavaScript -->
+    <script src="/static/shared_navbar.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div x-data="memoryDashboard()" class="min-h-screen">
+        <!-- Shared Penguin UI Navbar -->
+        <div id="shared-navbar">
+            <!-- Navbar will be loaded here -->
+        </div>
+        
+        <div class="container mx-auto px-4 py-8">
+            <!-- Page Header -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+                <div class="p-6 border-b border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">🧠 Memory Management</h1>
+                            <p class="text-gray-600 mt-1">Explore and search bot conversation memories</p>
+                        </div>
+                        <div class="flex space-x-3">
+                            <button @click="refreshData()" 
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                🔄 Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        <!-- Statistics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center">
+                    <div class="p-3 bg-blue-100 rounded-lg">
+                        <span class="text-2xl">💬</span>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Total Conversations</p>
+                        <p class="text-2xl font-bold text-gray-900" x-text="stats.totalConversations"></p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center">
+                    <div class="p-3 bg-purple-100 rounded-lg">
+                        <span class="text-2xl">🧠</span>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Memory Entries</p>
+                        <p class="text-2xl font-bold text-gray-900" x-text="stats.totalMemories"></p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center">
+                    <div class="p-3 bg-green-100 rounded-lg">
+                        <span class="text-2xl">👥</span>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Unique Users</p>
+                        <p class="text-2xl font-bold text-gray-900" x-text="stats.uniqueUsers"></p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center">
+                    <div class="p-3 bg-orange-100 rounded-lg">
+                        <span class="text-2xl">🏠</span>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Guilds</p>
+                        <p class="text-2xl font-bold text-gray-900" x-text="stats.uniqueGuilds"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search and Filters -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+            <div class="p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">🔍 Search & Filter</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Search Text</label>
+                        <input x-model="searchQuery" 
+                               @input="searchConversations()"
+                               type="text" 
+                               placeholder="Search conversations..."
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">User ID</label>
+                        <select x-model="selectedUserId" 
+                                @change="filterByUser()"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="">All Users</option>
+                            <template x-for="user in users" :key="user.id">
+                                <option :value="user.id" x-text="`${user.id} (${user.count} conversations)`"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Guild ID</label>
+                        <select x-model="selectedGuildId" 
+                                @change="filterByGuild()"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="">All Guilds</option>
+                            <template x-for="guild in guilds" :key="guild.id">
+                                <option :value="guild.id" x-text="`${guild.displayName} (${guild.count} conversations)`"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-4 flex space-x-3">
+                    <button @click="clearFilters()" 
+                            class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">
+                        Clear Filters
+                    </button>
+                    <button @click="exportData()" 
+                            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                        📥 Export Data
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        💬 Conversations 
+                        <span class="text-sm font-normal text-gray-600" x-text="`(${filteredConversations.length} results)`"></span>
+                        <span class="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded ml-2">Latest First</span>
+                    </h2>
+                    <div class="flex space-x-2">
+                        <button @click="sortBy('timestamp')" 
+                                class="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors">
+                            📅 Latest First
+                        </button>
+                        <button @click="sortBy('user_id')" 
+                                class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                            Sort by User
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-6">
+                <div x-show="filteredConversations.length === 0" class="text-center py-8">
+                    <div class="text-gray-400 text-lg mb-2">🔍</div>
+                    <div class="text-gray-600">No conversations found</div>
+                </div>
+                
+                <!-- Pagination Info -->
+                <div class="flex items-center justify-between mb-4">
+                    <div class="text-sm text-gray-600">
+                        Showing <span x-text="(currentPage - 1) * itemsPerPage + 1"></span> to 
+                        <span x-text="Math.min(currentPage * itemsPerPage, totalFilteredItems)"></span> 
+                        of <span x-text="totalFilteredItems"></span> voice call sessions
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <select x-model="itemsPerPage" @change="changePageSize()" 
+                                class="text-sm border border-gray-300 rounded px-2 py-1">
+                            <option value="10">10 per page</option>
+                            <option value="25">25 per page</option>
+                            <option value="50">50 per page</option>
+                            <option value="100">100 per page</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="space-y-6">
+                    <template x-for="(session, sessionIndex) in paginatedConversations" :key="session.sessionId">
+                        <!-- Session Header -->
+                        <div class="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4 cursor-pointer hover:from-blue-100 hover:to-purple-100 transition-colors"
+                             @click="viewSessionDetail(session)">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                                        <span class="text-white text-sm font-bold" x-text="(sessionIndex + 1).toString().padStart(2, '0')"></span>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-900 flex items-center space-x-2">
+                                            <span>Voice Call Session</span>
+                                            <span class="text-xs text-blue-600">👁️ View Details</span>
+                                        </div>
+                                        <div class="text-xs text-gray-500">
+                                            <span x-text="session.conversations.length"></span> messages • 
+                                            <span x-text="formatTimestamp(session.startTime)"></span> - 
+                                            <span x-text="formatTimestamp(session.endTime)"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <div class="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
+                                        <span x-text="session.userId"></span>
+                                    </div>
+                                    <div class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                        <span x-text="getGuildDisplayName(session.guildId)"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Session Summary -->
+                        <div class="ml-4 mb-3">
+                            <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-medium">Session Summary:</span> 
+                                    <span x-text="session.conversations.length"></span> messages in this voice call
+                                </div>
+                                <div class="text-xs text-gray-500">
+                                    Click the session header above to view all messages
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Session Conversations (always visible) -->
+                        <div class="space-y-3 ml-4">
+                            <template x-for="(conv, convIndex) in session.conversations" :key="conv.conversation_id">
+                                <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                                    <div class="flex items-start justify-between mb-3">
+                                        <div class="flex items-center space-x-3">
+                                            <div class="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center">
+                                                <span class="text-white text-xs font-bold" x-text="(convIndex + 1).toString().padStart(2, '0')"></span>
+                                            </div>
+                                            <div>
+                                                <div class="flex items-center space-x-2">
+                                                    <div class="text-sm font-medium text-gray-900" x-text="conv.username || 'Unknown User'"></div>
+                                                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded" x-text="conv.user_id"></span>
+                                                </div>
+                                                <div class="text-xs text-gray-500 flex items-center space-x-2">
+                                                    <span x-text="formatTimestamp(conv.timestamp)"></span>
+                                                    <span class="text-gray-300">•</span>
+                                                    <span x-text="getGuildDisplayName(conv.guild_id)"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center space-x-2">
+                                            <div class="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded" x-text="`#${conv.conversation_id}`"></div>
+                                            <div class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded" x-text="getInteractionType(conv)"></div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="space-y-3">
+                                        <div class="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <div class="text-xs font-medium text-blue-600">👤 User Message</div>
+                                                <div class="text-xs text-blue-500" x-text="getMessageLength(conv.user_message)"></div>
+                                            </div>
+                                            <div class="text-sm text-gray-800" x-text="conv.user_message"></div>
+                                        </div>
+                                        
+                                        <div class="bg-purple-50 border-l-4 border-purple-400 p-3 rounded">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <div class="text-xs font-medium text-purple-600">🤖 Bot Response</div>
+                                                <div class="text-xs text-purple-500" x-text="getMessageLength(conv.assistant_message)"></div>
+                                            </div>
+                                            <div class="text-sm text-gray-800" x-text="conv.assistant_message"></div>
+                                        </div>
+                                        
+                                        <!-- Additional Info -->
+                                        <div class="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
+                                            <div class="flex items-center space-x-4">
+                                                <span class="flex items-center space-x-1">
+                                                    <span>💬</span>
+                                                    <span x-text="getConversationStats(conv)"></span>
+                                                </span>
+                                                <span class="flex items-center space-x-1">
+                                                    <span>⏱️</span>
+                                                    <span x-text="getTimeAgo(conv.timestamp)"></span>
+                                                </span>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                <button @click="copyConversation(conv)" 
+                                                        class="text-gray-400 hover:text-gray-600 transition-colors"
+                                                        title="Copy conversation">
+                                                    📋
+                                                </button>
+                                                <button @click="toggleConversationDetails(conv)" 
+                                                        class="text-gray-400 hover:text-gray-600 transition-colors"
+                                                        title="Show details">
+                                                    🔍
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Detailed Info (collapsible) -->
+                                        <div x-show="conv.showDetails" x-transition class="bg-gray-50 p-3 rounded text-xs">
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <span class="font-medium text-gray-600">Conversation ID:</span>
+                                                    <span x-text="conv.conversation_id"></span>
+                                                </div>
+                                                <div>
+                                                    <span class="font-medium text-gray-600">User ID:</span>
+                                                    <span x-text="conv.user_id"></span>
+                                                </div>
+                                                <div>
+                                                    <span class="font-medium text-gray-600">Guild ID:</span>
+                                                    <span x-text="conv.guild_id"></span>
+                                                </div>
+                                                <div>
+                                                    <span class="font-medium text-gray-600">Full Timestamp:</span>
+                                                    <span x-text="conv.timestamp"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Pagination Controls -->
+                <div class="flex items-center justify-between mt-8">
+                    <div class="flex items-center space-x-2">
+                        <button @click="goToPage(1)" 
+                                :disabled="currentPage === 1"
+                                :class="currentPage === 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'"
+                                class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            First
+                        </button>
+                        <button @click="goToPage(currentPage - 1)" 
+                                :disabled="currentPage === 1"
+                                :class="currentPage === 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'"
+                                class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            Previous
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center space-x-1">
+                        <template x-for="page in visiblePages" :key="page">
+                            <button @click="goToPage(page)" 
+                                    :class="page === currentPage ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'"
+                                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                <span x-text="page"></span>
+                            </button>
+                        </template>
+                    </div>
+                    
+                    <div class="flex items-center space-x-2">
+                        <button @click="goToPage(currentPage + 1)" 
+                                :disabled="currentPage === totalPages"
+                                :class="currentPage === totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'"
+                                class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            Next
+                        </button>
+                        <button @click="goToPage(totalPages)" 
+                                :disabled="currentPage === totalPages"
+                                :class="currentPage === totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'"
+                                class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            Last
+                        </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Session Detail Modal -->
+        <div x-show="showSessionDetail" 
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+             @click.self="closeSessionDetail()">
+            <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden">
+                <!-- Modal Header -->
+                <div class="bg-gradient-to-r from-blue-50 to-purple-50 border-b border-gray-200 p-6">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                                <span class="text-white text-lg font-bold">📞</span>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900">Voice Call Session Details</h3>
+                                <div class="text-sm text-gray-500">
+                                    <span x-text="selectedSession ? selectedSession.conversations.length : 0"></span> messages • 
+                                    <span x-text="selectedSession ? formatTimestamp(selectedSession.startTime) : ''"></span> - 
+                                    <span x-text="selectedSession ? formatTimestamp(selectedSession.endTime) : ''"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="text-xs bg-blue-100 text-blue-600 px-3 py-1 rounded">
+                                <span x-text="selectedSession ? selectedSession.userId : ''"></span>
+                            </div>
+                            <div class="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded">
+                                <span x-text="selectedSession ? getGuildDisplayName(selectedSession.guildId) : ''"></span>
+                            </div>
+                            <button @click="closeSessionDetail()" 
+                                    class="text-gray-400 hover:text-gray-600 transition-colors">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Modal Content -->
+                <div class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                    <template x-if="selectedSession">
+                        <div class="space-y-4">
+                            <template x-for="(conv, convIndex) in selectedSession.conversations" :key="conv.conversation_id">
+                                <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                                    <div class="flex items-start justify-between mb-3">
+                                        <div class="flex items-center space-x-3">
+                                            <div class="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center">
+                                                <span class="text-white text-xs font-bold" x-text="(convIndex + 1).toString().padStart(2, '0')"></span>
+                                            </div>
+                                            <div>
+                                                <div class="flex items-center space-x-2">
+                                                    <div class="text-sm font-medium text-gray-900" x-text="conv.username || 'Unknown User'"></div>
+                                                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded" x-text="conv.user_id"></span>
+                                                </div>
+                                                <div class="text-xs text-gray-500 flex items-center space-x-2">
+                                                    <span x-text="formatTimestamp(conv.timestamp)"></span>
+                                                    <span class="text-gray-300">•</span>
+                                                    <span x-text="getGuildDisplayName(conv.guild_id)"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center space-x-2">
+                                            <div class="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded" x-text="`#${conv.conversation_id}`"></div>
+                                            <div class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded" x-text="getInteractionType(conv)"></div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="space-y-3">
+                                        <div class="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <div class="text-xs font-medium text-blue-600">👤 User Message</div>
+                                                <div class="text-xs text-blue-500" x-text="getMessageLength(conv.user_message)"></div>
+                                            </div>
+                                            <div class="text-sm text-gray-800" x-text="conv.user_message"></div>
+                                        </div>
+                                        
+                                        <div class="bg-purple-50 border-l-4 border-purple-400 p-3 rounded">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <div class="text-xs font-medium text-purple-600">🤖 Bot Response</div>
+                                                <div class="text-xs text-purple-500" x-text="getMessageLength(conv.assistant_message)"></div>
+                                            </div>
+                                            <div class="text-sm text-gray-800" x-text="conv.assistant_message"></div>
+                                        </div>
+                                        
+                                        <!-- Additional Info -->
+                                        <div class="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
+                                            <div class="flex items-center space-x-4">
+                                                <span class="flex items-center space-x-1">
+                                                    <span>💬</span>
+                                                    <span x-text="getConversationStats(conv)"></span>
+                                                </span>
+                                                <span class="flex items-center space-x-1">
+                                                    <span>⏱️</span>
+                                                    <span x-text="getTimeAgo(conv.timestamp)"></span>
+                                                </span>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                <button @click="copyConversation(conv)" 
+                                                        class="text-gray-400 hover:text-gray-600 transition-colors"
+                                                        title="Copy conversation">
+                                                    📋
+                                                </button>
+                                                <button @click="toggleConversationDetails(conv)" 
+                                                        class="text-gray-400 hover:text-gray-600 transition-colors"
+                                                        title="Show details">
+                                                    🔍
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Detailed Info (collapsible) -->
+                                        <div x-show="conv.showDetails" x-transition class="bg-gray-50 p-3 rounded text-xs">
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <span class="font-medium text-gray-600">Conversation ID:</span>
+                                                    <span x-text="conv.conversation_id"></span>
+                                                </div>
+                                                <div>
+                                                    <span class="font-medium text-gray-600">User ID:</span>
+                                                    <span x-text="conv.user_id"></span>
+                                                </div>
+                                                <div>
+                                                    <span class="font-medium text-gray-600">Guild ID:</span>
+                                                    <span x-text="conv.guild_id"></span>
+                                                </div>
+                                                <div>
+                                                    <span class="font-medium text-gray-600">Full Timestamp:</span>
+                                                    <span x-text="conv.timestamp"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <script>
+        function memoryDashboard() {
+            return {
+                conversations: [],
+                filteredConversations: [],
+                paginatedConversations: [],
+                stats: {
+                    totalConversations: 0,
+                    totalMemories: 0,
+                    uniqueUsers: 0,
+                    uniqueGuilds: 0
+                },
+                users: [],
+                guilds: [],
+                searchQuery: '',
+                selectedUserId: '',
+                selectedGuildId: '',
+                sortOrder: 'desc',
+                
+                // Pagination
+                currentPage: 1,
+                itemsPerPage: 25,
+                totalPages: 1,
+                totalFilteredItems: 0,
+                
+                // Grouping
+                groupedConversations: [],
+                
+                
+                // Session detail view
+                selectedSession: null, // Currently selected session for detail view
+                showSessionDetail: false, // Whether to show session detail view
+                
+                init() {
+                    console.log('Memory dashboard initialized');
+                    this.loadSharedNavbar();
+                    this.loadData();
+                },
+                
+                async loadSharedNavbar() {
+                    // Use the global NavbarManager
+                    if (window.NavbarManager) {
+                        window.NavbarManager.init();
+                    }
+                },
+                
+                async loadData() {
+                    try {
+                        const response = await fetch('/api/memory/conversations');
+                        const data = await response.json();
+                        
+                        this.conversations = data.conversations || [];
+                        // Sort by timestamp descending (latest first) by default
+                        this.conversations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                        this.filteredConversations = [...this.conversations];
+                        this.calculateStats();
+                        this.calculateUsersAndGuilds();
+                        this.updatePagination();
+                        
+                        console.log(`Loaded ${this.conversations.length} conversations (sorted by latest first)`);
+                    } catch (error) {
+                        console.error('Error loading data:', error);
+                    }
+                },
+                
+                calculateStats() {
+                    this.stats.totalConversations = this.conversations.length;
+                    this.stats.totalMemories = this.conversations.length; // Same as conversations
+                    
+                    const uniqueUsers = new Set(this.conversations.map(c => c.user_id));
+                    const uniqueGuilds = new Set(this.conversations.map(c => c.guild_id));
+                    
+                    this.stats.uniqueUsers = uniqueUsers.size;
+                    this.stats.uniqueGuilds = uniqueGuilds.size;
+                },
+                
+                calculateUsersAndGuilds() {
+                    // Calculate user counts
+                    const userCounts = {};
+                    this.conversations.forEach(conv => {
+                        userCounts[conv.user_id] = (userCounts[conv.user_id] || 0) + 1;
+                    });
+                    
+                    this.users = Object.entries(userCounts)
+                        .map(([id, count]) => ({ id, count }))
+                        .sort((a, b) => b.count - a.count);
+                    
+                    // Calculate guild counts
+                    const guildCounts = {};
+                    this.conversations.forEach(conv => {
+                        guildCounts[conv.guild_id] = (guildCounts[conv.guild_id] || 0) + 1;
+                    });
+                    
+                    this.guilds = Object.entries(guildCounts)
+                        .map(([id, count]) => ({ 
+                            id, 
+                            count,
+                            displayName: this.getGuildDisplayName(id)
+                        }))
+                        .sort((a, b) => b.count - a.count);
+                    
+                    console.log('Available guilds:', this.guilds);
+                },
+                
+                searchConversations() {
+                    this.applyFilters();
+                },
+                
+                filterByUser() {
+                    this.applyFilters();
+                },
+                
+                filterByGuild() {
+                    console.log('Filtering by guild:', this.selectedGuildId);
+                    this.applyFilters();
+                },
+                
+                applyFilters() {
+                    let filtered = [...this.conversations];
+                    console.log('Starting with', filtered.length, 'conversations');
+                    
+                    // Text search
+                    if (this.searchQuery) {
+                        const query = this.searchQuery.toLowerCase();
+                        filtered = filtered.filter(conv => 
+                            conv.user_message.toLowerCase().includes(query) ||
+                            conv.assistant_message.toLowerCase().includes(query)
+                        );
+                        console.log('After text search:', filtered.length, 'conversations');
+                    }
+                    
+                    // User filter
+                    if (this.selectedUserId) {
+                        filtered = filtered.filter(conv => conv.user_id === this.selectedUserId);
+                        console.log('After user filter:', filtered.length, 'conversations');
+                    }
+                    
+                    // Guild filter - convert both to strings for comparison
+                    if (this.selectedGuildId) {
+                        console.log('Applying guild filter for:', this.selectedGuildId);
+                        const beforeCount = filtered.length;
+                        filtered = filtered.filter(conv => {
+                            const matches = String(conv.guild_id) === String(this.selectedGuildId);
+                            console.log(`Guild ${conv.guild_id} (${typeof conv.guild_id}) vs ${this.selectedGuildId} (${typeof this.selectedGuildId}): ${matches}`);
+                            return matches;
+                        });
+                        console.log('After guild filter:', filtered.length, 'conversations (was', beforeCount, ')');
+                    }
+                    
+                    this.filteredConversations = filtered;
+                    // Maintain latest-first sorting after filtering
+                    this.filteredConversations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    
+                    // Update pagination
+                    this.updatePagination();
+                },
+                
+                clearFilters() {
+                    this.searchQuery = '';
+                    this.selectedUserId = '';
+                    this.selectedGuildId = '';
+                    this.filteredConversations = [...this.conversations];
+                    // Re-sort to maintain latest-first order
+                    this.filteredConversations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    this.updatePagination();
+                },
+                
+                // Grouping methods
+                groupConversations() {
+                    const sessions = new Map();
+                    const sessionTimeout = 30 * 60 * 1000; // 30 minutes in milliseconds
+                    
+                    // Sort conversations by timestamp
+                    const sortedConversations = [...this.filteredConversations].sort((a, b) => 
+                        new Date(a.timestamp) - new Date(b.timestamp)
+                    );
+                    
+                    sortedConversations.forEach(conv => {
+                        const convTime = new Date(conv.timestamp);
+                        let assignedToSession = false;
+                        
+                        // Try to find an existing session for the same user/guild
+                        for (const [sessionId, session] of sessions) {
+                            const lastConvTime = new Date(session.conversations[session.conversations.length - 1].timestamp);
+                            const timeDiff = convTime - lastConvTime;
+                            
+                            // If same user/guild and within timeout, add to existing session
+                            if (session.userId === conv.user_id && 
+                                session.guildId === conv.guild_id && 
+                                timeDiff <= sessionTimeout) {
+                                session.conversations.push(conv);
+                                session.endTime = conv.timestamp;
+                                assignedToSession = true;
+                                break;
+                            }
+                        }
+                        
+                        // Create new session if not assigned
+                        if (!assignedToSession) {
+                            const sessionId = `session_${conv.user_id}_${conv.guild_id}_${convTime.getTime()}`;
+                            sessions.set(sessionId, {
+                                sessionId,
+                                userId: conv.user_id,
+                                guildId: conv.guild_id,
+                                startTime: conv.timestamp,
+                                endTime: conv.timestamp,
+                                conversations: [conv]
+                            });
+                        }
+                    });
+                    
+                    // Convert to array and sort by start time (newest first)
+                    this.groupedConversations = Array.from(sessions.values())
+                        .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+                    
+                    
+                },
+                
+                // Pagination methods
+                updatePagination() {
+                    // Group conversations first
+                    this.groupConversations();
+                    
+                    this.totalFilteredItems = this.groupedConversations.length;
+                    this.totalPages = Math.ceil(this.totalFilteredItems / this.itemsPerPage);
+                    
+                    // Ensure current page is valid
+                    if (this.currentPage > this.totalPages) {
+                        this.currentPage = Math.max(1, this.totalPages);
+                    }
+                    if (this.currentPage < 1) {
+                        this.currentPage = 1;
+                    }
+                    
+                    // Calculate paginated sessions
+                    const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+                    const endIndex = startIndex + this.itemsPerPage;
+                    this.paginatedConversations = this.groupedConversations.slice(startIndex, endIndex);
+                    
+                },
+                
+                goToPage(page) {
+                    if (page >= 1 && page <= this.totalPages) {
+                        this.currentPage = page;
+                        this.updatePagination();
+                    }
+                },
+                
+                changePageSize() {
+                    this.currentPage = 1; // Reset to first page
+                    this.updatePagination();
+                },
+                
+                get visiblePages() {
+                    const pages = [];
+                    const maxVisible = 5;
+                    let start = Math.max(1, this.currentPage - Math.floor(maxVisible / 2));
+                    let end = Math.min(this.totalPages, start + maxVisible - 1);
+                    
+                    if (end - start + 1 < maxVisible) {
+                        start = Math.max(1, end - maxVisible + 1);
+                    }
+                    
+                    for (let i = start; i <= end; i++) {
+                        pages.push(i);
+                    }
+                    return pages;
+                },
+                
+                // Session interaction methods
+                viewSessionDetail(session) {
+                    this.selectedSession = session;
+                    this.showSessionDetail = true;
+                },
+                
+                closeSessionDetail() {
+                    this.selectedSession = null;
+                    this.showSessionDetail = false;
+                },
+                
+                sortBy(field) {
+                    this.filteredConversations.sort((a, b) => {
+                        if (field === 'timestamp') {
+                            return new Date(b.timestamp) - new Date(a.timestamp);
+                        } else if (field === 'user_id') {
+                            return a.user_id.localeCompare(b.user_id);
+                        }
+                        return 0;
+                    });
+                },
+                
+                async refreshData() {
+                    await this.loadData();
+                },
+                
+                exportData() {
+                    const data = {
+                        conversations: this.filteredConversations,
+                        stats: this.stats,
+                        exportTime: new Date().toISOString()
+                    };
+                    
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `miku_memories_${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                },
+                
+                // Helper functions for enhanced display
+                
+                getGuildDisplayName(guildId) {
+                    const guildMap = {
+                        '0': 'Direct Message',
+                        '1239394551756755055': 'Beautiful City Server'
+                    };
+                    
+                    // Convert to string if it's a number
+                    const guildIdStr = String(guildId);
+                    return guildMap[guildIdStr] || `Guild ${guildIdStr.slice(-4)}`;
+                },
+                
+                formatTimestamp(timestamp) {
+                    const date = new Date(timestamp);
+                    return date.toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                },
+                
+                getTimeAgo(timestamp) {
+                    const now = new Date();
+                    const date = new Date(timestamp);
+                    const diffMs = now - date;
+                    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                    const diffDays = Math.floor(diffHours / 24);
+                    
+                    if (diffDays > 0) {
+                        return `${diffDays}d ago`;
+                    } else if (diffHours > 0) {
+                        return `${diffHours}h ago`;
+                    } else {
+                        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+                        return diffMinutes > 0 ? `${diffMinutes}m ago` : 'Just now';
+                    }
+                },
+                
+                getMessageLength(message) {
+                    return `${message.length} chars`;
+                },
+                
+                getConversationStats(conv) {
+                    const userLength = conv.user_message.length;
+                    const botLength = conv.assistant_message.length;
+                    return `${userLength + botLength} chars total`;
+                },
+                
+                getInteractionType(conv) {
+                    // Determine interaction type based on content
+                    const userMsg = conv.user_message.toLowerCase();
+                    if (userMsg.includes('hello') || userMsg.includes('hi')) return 'Greeting';
+                    if (userMsg.includes('?')) return 'Question';
+                    if (userMsg.includes('!')) return 'Exclamation';
+                    if (userMsg.length < 10) return 'Short';
+                    return 'Chat';
+                },
+                
+                copyConversation(conv) {
+                    const text = `User: ${conv.user_message}\nBot: ${conv.assistant_message}`;
+                    navigator.clipboard.writeText(text).then(() => {
+                        // Show brief success indicator
+                        const button = event.target.closest('button');
+                        const originalText = button.innerHTML;
+                        button.innerHTML = '✅';
+                        setTimeout(() => {
+                            button.innerHTML = originalText;
+                        }, 1000);
+                    });
+                },
+                
+                toggleConversationDetails(conv) {
+                    conv.showDetails = !conv.showDetails;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
